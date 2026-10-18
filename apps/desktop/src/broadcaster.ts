@@ -7,7 +7,7 @@ import {
 } from "@beatsync/shared";
 import { ServerClock } from "./clock";
 import { PcmChunker } from "./pcmChunker";
-import type { TapFormat } from "./audioTap";
+import type { CaptureFormat } from "./audioCapture";
 
 // How long to wait for the server to confirm START_LIVE_STREAM before assuming it was refused
 const START_CONFIRM_TIMEOUT_MS = 4000;
@@ -54,7 +54,7 @@ export class Broadcaster {
   private ntpTimer: ReturnType<typeof setTimeout> | null = null;
   private chunker: PcmChunker | null = null;
   private streamId: number | null = null;
-  private pendingStart: { format: TapFormat; latencyMs: number; sourceName: string } | null = null;
+  private pendingStart: { format: CaptureFormat; latencyMs: number; sourceName: string } | null = null;
   private closedByUser = false;
   private startTimeout: ReturnType<typeof setTimeout> | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -130,7 +130,7 @@ export class Broadcaster {
   }
 
   /** Ask the room to switch to our live stream. Audio flows once the server confirms. */
-  startStream(format: TapFormat, latencyMs: number, sourceName: string): void {
+  startStream(format: CaptureFormat, latencyMs: number, sourceName: string): void {
     this.pendingStart = { format, latencyMs, sourceName };
     if (this.clock.isSynced) this.sendStart();
   }
@@ -146,7 +146,7 @@ export class Broadcaster {
     if (this.status.phase === "live") this.update({ phase: "ready" });
   }
 
-  /** Raw PCM from the tap helper */
+  /** Raw PCM from the capture helper */
   pushPcm(pcm: Buffer): void {
     const ws = this.ws;
     if (!this.chunker || !ws || ws.readyState !== WebSocket.OPEN) return;

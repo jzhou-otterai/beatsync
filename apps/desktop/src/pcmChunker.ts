@@ -16,7 +16,7 @@ export interface PcmChunkerOptions {
 }
 
 /**
- * Slices raw s16le PCM from the tap helper into fixed-size frames and stamps each
+ * Slices raw s16le PCM from the capture helper into fixed-size frames and stamps each
  * with the server time it should play at.
  *
  * Timestamps advance by sample count (not wall-clock reads), so frames tile the

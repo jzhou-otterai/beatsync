@@ -9,7 +9,7 @@ Beatsync is a high-precision web audio player for multi-device synchronized play
 - **`apps/client`**: Next.js 15 (App Router, React 19, Tailwind v4, Shadcn/ui)
 - **`apps/server`**: Bun HTTP + WebSocket server (native `Bun.serve`, not Hono routing)
 - **`packages/shared`**: Zod schemas shared across client/server (`@beatsync/shared`)
-- **`apps/desktop`**: Electron app (macOS 14.2+) that broadcasts the Mac's system audio into a room via a Swift Core Audio tap helper (`native/SystemAudioTap.swift`). Run with `bun run desktop`
+- **`apps/desktop`**: Electron app (macOS 13+) that broadcasts the Mac's audio into a room. It adds a "Beatsync" virtual output device (`driver/BeatsyncDriver.c`, a Core Audio HAL plug-in) whose loopback is read by a Swift helper (`native/DeviceCapture.swift`). Run with `bun run desktop`
 
 ## Commands
 

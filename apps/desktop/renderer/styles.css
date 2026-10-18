@@ -253,3 +253,22 @@ dd {
 .lan-result.error {
   color: #fca5a5;
 }
+.device {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.device-help {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  user-select: text;
+}
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}

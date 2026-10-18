@@ -4,8 +4,9 @@ import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { hostname, networkInterfaces } from "node:os";
 import path from "node:path";
-import { AudioTap } from "./audioTap";
+import { AudioCapture, probeDevice } from "./audioCapture";
 import { Broadcaster, type BroadcasterStatus } from "./broadcaster";
+import { driverNeedsInstall, installDriver } from "./driverInstall";
 import { findLanAddress, lanJoinUrl } from "./lanUrl";
 
 export interface Settings {
@@ -14,7 +15,8 @@ export interface Settings {
   roomId: string;
   username: string;
   latencyMs: number;
-  muteLocalOutput: boolean;
+  /** Make Beatsync the Mac's output while streaming, and switch back afterwards */
+  routeOutput: boolean;
   clientId: string;
 }
 
@@ -27,7 +29,7 @@ const loadSettings = (): Settings => {
     roomId: "",
     username: hostname().replace(/\.local$/, ""),
     latencyMs: LIVE_STREAM_CONSTANTS.DEFAULT_LATENCY_MS,
-    muteLocalOutput: true,
+    routeOutput: true,
     clientId: randomUUID(),
   };
   try {
@@ -43,13 +45,47 @@ const saveSettings = (settings: Settings) => {
 
 const helperPath = () =>
   app.isPackaged
-    ? path.join(process.resourcesPath, "bin", "beatsync-audio-tap")
-    : path.join(app.getAppPath(), "bin", "beatsync-audio-tap");
+    ? path.join(process.resourcesPath, "bin", "beatsync-audio-capture")
+    : path.join(app.getAppPath(), "bin", "beatsync-audio-capture");
+
+const driverPath = () =>
+  app.isPackaged
+    ? path.join(process.resourcesPath, "driver", "Beatsync.driver")
+    : path.join(app.getAppPath(), "build", "Beatsync.driver");
+
+/** Core Audio takes a moment to come back after a restart */
+const waitForDevice = async (timeoutMs = 10_000) => {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const status = await probeDevice(helperPath());
+    if (status.installed || Date.now() > deadline) return status;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+};
+
+/**
+ * Make sure the Beatsync device is installed and current, installing the driver
+ * bundled with the app if not. Returns an error message, or null when ready.
+ */
+const ensureDevice = async (): Promise<string | null> => {
+  const status = await probeDevice(helperPath());
+  if (status.installed && !driverNeedsInstall(driverPath())) return null;
+
+  sendStatus({ ...idleStatus(), phase: "connecting", message: "Installing the Beatsync audio device…" });
+  const result = await installDriver(driverPath());
+  if (!result.ok) return result.message;
+
+  const after = await waitForDevice();
+  win?.webContents.send("device", after);
+  return after.installed
+    ? null
+    : "Installed the audio device, but Core Audio hasn't picked it up yet. Try restarting your Mac.";
+};
 
 let win: BrowserWindow | null = null;
 let settings: Settings;
 let broadcaster: Broadcaster | null = null;
-let tap: AudioTap | null = null;
+let capture: AudioCapture | null = null;
 let peakLevel = 0;
 let levelTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -68,21 +104,27 @@ const peakOf = (pcm: Buffer): number => {
 };
 
 const stopAll = () => {
-  tap?.stop();
-  tap = null;
+  capture?.stop();
+  capture = null;
   broadcaster?.disconnect();
   broadcaster = null;
   if (levelTimer) clearInterval(levelTimer);
   levelTimer = null;
 };
 
-const start = (next: Omit<Settings, "clientId">) => {
+const start = async (next: Omit<Settings, "clientId">) => {
   stopAll();
   settings = { ...settings, ...next };
   saveSettings(settings);
 
   if (!existsSync(helperPath())) {
     sendStatus({ ...idleStatus(), phase: "error", message: `Capture helper missing at ${helperPath()}` });
+    return;
+  }
+
+  const deviceError = await ensureDevice();
+  if (deviceError) {
+    sendStatus({ ...idleStatus(), phase: "error", message: deviceError });
     return;
   }
 
@@ -96,13 +138,13 @@ const start = (next: Omit<Settings, "clientId">) => {
   broadcaster = b;
   b.connect();
 
-  const t = new AudioTap(helperPath());
-  tap = t;
-  t.start(
-    { muteLocalOutput: settings.muteLocalOutput },
+  const c = new AudioCapture(helperPath());
+  capture = c;
+  c.start(
+    { routeOutput: settings.routeOutput },
     {
       onFormat: (format) => {
-        // A format change mid-stream (e.g. output device switched) needs a fresh stream
+        // A format change mid-stream (e.g. sample rate changed in Audio MIDI Setup) needs a fresh stream
         b.stopStream();
         b.startStream(format, settings.latencyMs, "Mac");
       },
@@ -110,12 +152,15 @@ const start = (next: Omit<Settings, "clientId">) => {
         peakLevel = Math.max(peakLevel, peakOf(pcm));
         b.pushPcm(pcm);
       },
+      onRouted: (previousOutput) => win?.webContents.send("routed", previousOutput),
       onError: (message) => sendStatus({ ...b.getStatus(), phase: "error", message }),
-      onExit: () => {
-        if (tap === t) {
-          sendStatus({ ...b.getStatus(), phase: "error", message: "Audio capture stopped unexpectedly" });
-          tap = null;
-        }
+      onExit: (error) => {
+        if (capture !== c) return;
+        capture = null;
+        // The helper exits on fatal errors (device missing, no Microphone access); leave
+        // the room too so it isn't stuck on a silent "live" stream
+        b.disconnect();
+        sendStatus({ ...b.getStatus(), phase: "error", message: error ?? "Audio capture stopped unexpectedly" });
       },
     }
   );
@@ -142,7 +187,7 @@ const idleStatus = (): BroadcasterStatus => ({
 const createWindow = () => {
   win = new BrowserWindow({
     width: 420,
-    height: 720,
+    height: 800,
     minWidth: 420,
     maxWidth: 420,
     minHeight: 560,
@@ -176,6 +221,17 @@ app.whenReady().then(() => {
     stopAll();
     sendStatus(idleStatus());
   });
+  ipcMain.handle("device-status", async () => ({
+    ...(await probeDevice(helperPath())),
+    updateAvailable: driverNeedsInstall(driverPath()),
+  }));
+  ipcMain.handle("install-device", async () => {
+    const error = await ensureDevice();
+    return { error, status: await probeDevice(helperPath()) };
+  });
+  ipcMain.handle("open-sound-settings", () =>
+    shell.openExternal("x-apple.systempreferences:com.apple.Sound-Settings.extension")
+  );
   ipcMain.handle("copy-lan-link", (_event, form: { webUrl: string; roomId: string }) => {
     if (!/^\d{6}$/.test(form.roomId)) return { ok: false, message: "Enter a 6-digit room code first" };
     const url = lanJoinUrl(form.webUrl, form.roomId, findLanAddress(networkInterfaces()));
@@ -198,5 +254,5 @@ app.on("window-all-closed", () => {
   app.quit();
 });
 
-// Make sure the helper releases the tap (and un-mutes the speakers) on quit
+// Make sure the helper stops (and switches the Mac back to its previous output) on quit
 app.on("before-quit", stopAll);

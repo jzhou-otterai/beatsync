@@ -34,8 +34,12 @@
     ],
     "extraResources": [
       {
-        "from": "bin/beatsync-audio-tap",
-        "to": "bin/beatsync-audio-tap"
+        "from": "bin/beatsync-audio-capture",
+        "to": "bin/beatsync-audio-capture"
+      },
+      {
+        "from": "build/Beatsync.driver",
+        "to": "driver/Beatsync.driver"
       }
     ],
     "mac": {
@@ -54,10 +58,10 @@
           ]
         }
       ],
-      "minimumSystemVersion": "14.2",
+      "minimumSystemVersion": "13.0",
       "identity": null,
       "extendInfo": {
-        "NSAudioCaptureUsageDescription": "Beatsync Speaker streams your Mac's audio to the devices in your Beatsync room."
+        "NSMicrophoneUsageDescription": "Beatsync Speaker reads the Beatsync audio device (what your Mac plays to it) to stream it to your room."
       }
     }
   }

@@ -12,11 +12,12 @@ const PHASE_LABELS = {
 };
 
 let running = false;
+let lastPhase = "idle";
 
 const readForm = () => ({
   roomId: $("roomId").value.trim(),
   username: $("username").value.trim(),
-  muteLocalOutput: $("muteLocalOutput").checked,
+  routeOutput: $("routeOutput").checked,
   latencyMs: Number($("latencyMs").value),
   wsUrl: $("wsUrl").value.trim(),
   webUrl: $("webUrl").value.trim(),
@@ -25,7 +26,7 @@ const readForm = () => ({
 const fillForm = (s) => {
   $("roomId").value = s.roomId;
   $("username").value = s.username;
-  $("muteLocalOutput").checked = s.muteLocalOutput;
+  $("routeOutput").checked = s.routeOutput;
   $("latencyMs").value = String(s.latencyMs);
   $("wsUrl").value = s.wsUrl;
   $("webUrl").value = s.webUrl;
@@ -41,7 +42,8 @@ const setRunning = (value) => {
   const btn = $("toggle");
   btn.textContent = running ? "Stop streaming" : "Start streaming";
   btn.classList.toggle("stop", running);
-  for (const id of ["roomId", "username", "muteLocalOutput", "latencyMs", "wsUrl", "webUrl"]) $(id).disabled = running;
+  for (const id of ["roomId", "username", "routeOutput", "latencyMs", "wsUrl", "webUrl"]) $(id).disabled = running;
+  $("toggle").disabled = !running && !deviceReady;
 };
 
 const renderStatus = (status) => {
@@ -65,9 +67,49 @@ const renderStatus = (status) => {
       : "–";
 
   if (status.phase === "idle") setRunning(false);
+  // Install and Microphone permission both happen while starting; show where they ended up
+  if (status.phase === "live" && lastPhase !== "live") checkDevice();
+  lastPhase = status.phase;
 };
 
 $("latencyMs").addEventListener("input", updateLatency);
+
+let deviceReady = false;
+
+const renderDevice = (device) => {
+  // Not installed is fine: starting installs it
+  deviceReady = device.microphone !== "denied";
+  $("deviceDot").className = `dot ${!device.installed ? "syncing" : deviceReady ? "ready" : "error"}`;
+  const title = $("deviceTitle");
+  const help = $("deviceHelp");
+  if (!device.installed) {
+    title.textContent = "Beatsync audio device not installed yet";
+    help.textContent =
+      "It installs automatically when you start streaming. macOS will ask for your password, since it adds a system audio device.";
+  } else if (device.microphone === "denied") {
+    title.textContent = "Microphone access is off";
+    help.textContent =
+      "Reading the Beatsync device counts as microphone input. Turn it on in System Settings → Privacy & Security → Microphone.";
+  } else {
+    title.textContent = "Beatsync audio device ready";
+    help.textContent =
+      device.microphone === "granted"
+        ? "Anything played to “Beatsync” goes to the room. Your Mac's speakers aren't touched."
+        : "macOS will ask for Microphone access when you start. That's how the app reads the Beatsync device.";
+  }
+  $("toggle").disabled = !running && !deviceReady;
+};
+
+const checkDevice = async () => renderDevice(await api.deviceStatus());
+
+$("recheckDevice").addEventListener("click", checkDevice);
+api.onDevice(renderDevice);
+$("openSound").addEventListener("click", () => api.openSoundSettings());
+api.onRouted((previousOutput) => {
+  const el = $("lanResult");
+  el.classList.remove("error");
+  el.textContent = `Mac output switched to Beatsync (was ${previousOutput}). It switches back when you stop.`;
+});
 
 $("form").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -99,6 +141,8 @@ api.onLevel((level) => {
   const pct = Math.min(100, Math.sqrt(level) * 100);
   /** @type {HTMLElement} */ (document.getElementById("level")).style.width = `${pct}%`;
 });
+
+checkDevice();
 
 api.getInitialState().then(({ settings, status }) => {
   fillForm(settings);

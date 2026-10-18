@@ -24,11 +24,26 @@
           <input id="username" maxlength="40" required />
         </label>
 
+        <div id="device" class="device">
+          <div class="row">
+            <span id="deviceDot" class="dot"></span>
+            <span id="deviceTitle">Checking for the Beatsync audio device…</span>
+          </div>
+          <p id="deviceHelp" class="device-help"></p>
+          <div class="links">
+            <button id="recheckDevice" class="link" type="button">Check again</button>
+            <button id="openSound" class="link" type="button">Open Sound settings ↗</button>
+          </div>
+        </div>
+
         <label class="toggle">
-          <input id="muteLocalOutput" type="checkbox" />
+          <input id="routeOutput" type="checkbox" />
           <span>
-            Mute this Mac while streaming
-            <small>Turns the Mac into a sender only, so it doesn't play ahead of the room</small>
+            Switch this Mac's output to Beatsync while streaming
+            <small
+              >Switches back when you stop. Turn off to choose Beatsync yourself, e.g. only in Spotify's output
+              menu</small
+            >
           </span>
         </label>
 
