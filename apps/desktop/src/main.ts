@@ -5,7 +5,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { hostname, networkInterfaces } from "node:os";
 import path from "node:path";
 import { AudioCapture, probeDevice } from "./audioCapture";
-import { Broadcaster, type BroadcasterStatus } from "./broadcaster";
+import { Broadcaster, initialBroadcasterStatus, type BroadcasterStatus } from "./broadcaster";
 import { driverNeedsInstall, installDriver } from "./driverInstall";
 import { findLanAddress, lanJoinUrl } from "./lanUrl";
 
@@ -137,12 +137,15 @@ const start = async (next: Omit<Settings, "clientId">) => {
     username: settings.username,
     clientId: settings.clientId,
     onStatus: sendStatus,
+    // The room volume also sets how loud this Mac plays its local copy
+    onGlobalVolume: (volume) => capture?.setRoomVolume(volume),
   });
   broadcaster = b;
   b.connect();
 
   const c = new AudioCapture(helperPath());
   capture = c;
+  c.setRoomVolume(b.getStatus().globalVolume);
   c.start(
     { routeOutput: settings.routeOutput, playOnMac: settings.playOnMac, delayMs: settings.latencyMs },
     {
@@ -176,23 +179,12 @@ const start = async (next: Omit<Settings, "clientId">) => {
   }, 100);
 };
 
-const idleStatus = (): BroadcasterStatus => ({
-  phase: "idle",
-  rttMs: 0,
-  offsetMs: 0,
-  ntpMeasurements: 0,
-  isAdmin: false,
-  listeners: 0,
-  framesSent: 0,
-  framesDropped: 0,
-  reanchors: 0,
-  liveStream: null,
-});
+const idleStatus = initialBroadcasterStatus;
 
 const createWindow = () => {
   win = new BrowserWindow({
     width: 420,
-    height: 860,
+    height: 920,
     minWidth: 420,
     maxWidth: 420,
     minHeight: 560,
@@ -226,6 +218,7 @@ app.whenReady().then(() => {
     stopAll();
     sendStatus(idleStatus());
   });
+  ipcMain.handle("set-room-volume", (_event, volume: number) => broadcaster?.setGlobalVolume(volume));
   ipcMain.handle("device-status", async () => ({
     ...(await probeDevice(helperPath())),
     updateAvailable: driverNeedsInstall(driverPath()),

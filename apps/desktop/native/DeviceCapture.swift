@@ -13,6 +13,9 @@
 //       the room's speakers. The Beatsync device's volume/mute controls (the Mac's
 //       volume keys) scale only this local copy, never what the room hears.
 //
+// stdin takes commands, one per line:
+//   room-volume 0.5   the room-wide volume (0-1), which the local copy also follows
+//
 // stderr carries newline-delimited JSON events for the parent process:
 //   {"event":"probe","installed":true,"microphone":"granted"}
 //   {"event":"format","sampleRate":48000,"channels":2}
@@ -353,12 +356,19 @@ func localGain() -> Float {
     return muted != 0 ? 0 : scalar * scalar // same curve as the driver's dB mapping
 }
 
-if let delayLine {
-    delayLine.setGain(localGain())
+// Room-wide volume from the app (stdin); listeners apply it too, so the Mac follows it
+var roomVolume: Float = 1
+
+func updateLocalGain() {
+    delayLine?.setGain(localGain() * roomVolume)
+}
+
+if delayLine != nil {
+    updateLocalGain()
     for selector in [kAudioDevicePropertyVolumeScalar, kAudioDevicePropertyMute] {
         var controlAddress = address(selector, kAudioObjectPropertyScopeOutput)
         AudioObjectAddPropertyListenerBlock(deviceID, &controlAddress, DispatchQueue.main) { _, _ in
-            delayLine.setGain(localGain())
+            updateLocalGain()
         }
     }
 }
@@ -414,9 +424,17 @@ for sig in [SIGTERM, SIGINT] {
     signalSources.append(source)
 }
 
-// Exit when the parent closes our stdin (e.g. it crashed)
+// Read commands from stdin; exit when the parent closes it (e.g. it crashed)
 DispatchQueue.global().async {
-    while !FileHandle.standardInput.availableData.isEmpty {}
+    while let line = readLine() {
+        let parts = line.split(separator: " ")
+        if parts.count == 2, parts[0] == "room-volume", let value = Float(parts[1]) {
+            DispatchQueue.main.async {
+                roomVolume = max(0, min(1, value))
+                updateLocalGain()
+            }
+        }
+    }
     DispatchQueue.main.async {
         AudioDeviceStop(deviceID, procID)
         AudioDeviceDestroyIOProcID(deviceID, procID)

@@ -84,6 +84,11 @@
         </div>
         <p id="message" class="message"></p>
         <div class="meter"><div id="level"></div></div>
+        <label class="room-volume">
+          <span>Room volume <output id="roomVolumeOut">–</output></span>
+          <input id="roomVolume" type="range" min="0" max="100" step="1" value="100" disabled />
+          <small id="roomVolumeHelp">Sets the volume on every device in the room, this Mac included</small>
+        </label>
         <dl id="stats">
           <div>
             <dt>RTT</dt>

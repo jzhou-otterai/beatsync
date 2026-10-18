@@ -57,6 +57,7 @@ export const probeDevice = (helperPath: string): Promise<DeviceStatus> =>
  */
 export class AudioCapture {
   private proc: ChildProcessWithoutNullStreams | null = null;
+  private roomVolume = 1;
 
   constructor(private readonly helperPath: string) {}
 
@@ -75,6 +76,8 @@ export class AudioCapture {
     this.proc = proc;
     let lastError: string | null = null;
 
+    // The room volume may have been set before the helper started
+    proc.stdin.write(`room-volume ${this.roomVolume}\n`);
     proc.stdout.on("data", (chunk: Buffer) => callbacks.onData(chunk));
 
     createInterface({ input: proc.stderr }).on("line", (line) => {
@@ -108,6 +111,12 @@ export class AudioCapture {
       this.proc = null;
       callbacks.onExit(lastError);
     });
+  }
+
+  /** Room-wide volume (0-1); scales the Mac's local copy along with its own volume keys */
+  setRoomVolume(volume: number): void {
+    this.roomVolume = volume;
+    if (this.proc?.stdin.writable) this.proc.stdin.write(`room-volume ${volume}\n`);
   }
 
   stop(): void {

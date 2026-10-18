@@ -49,6 +49,11 @@ and the Sound menu slider work while it's the output. They set how loud **this M
 they don't change the room. Listeners always get full-level audio and set their own volume on their
 device or with the room's volume slider.
 
+**Room volume.** The slider under the stream status sets the volume on every device in the room,
+this Mac included. It's the same room-wide volume as the web app's slider, so the two stay in sync.
+Changing it needs playback control in the room (admin, or a room open to everyone). The Mac's own
+volume keys then work on top of it, for the Mac only.
+
 Open the same room on your other devices and click **Start System**. Instead of the track
 player, they show a "Live from …" banner. On a home network, **Copy LAN join link** puts a link
 like `http://192.168.1.20:3000/room/123456` on the clipboard. It swaps `localhost` in the web app

@@ -272,3 +272,13 @@ button:disabled {
   cursor: not-allowed;
   transform: none;
 }
+.room-volume {
+  gap: 4px;
+}
+.room-volume input {
+  width: 100%;
+  accent-color: var(--accent);
+}
+.room-volume input:disabled {
+  opacity: 0.4;
+}

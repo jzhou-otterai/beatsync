@@ -51,6 +51,7 @@ const setRunning = (value) => {
 
 const renderStatus = (status) => {
   $("dot").className = `dot ${status.phase}`;
+  renderRoomVolume(status);
   let label = PHASE_LABELS[status.phase] ?? status.phase;
   if (status.phase === "live") label = `Live to ${status.listeners} device${status.listeners === 1 ? "" : "s"}`;
   $("phase").textContent = label;
@@ -149,6 +150,38 @@ $("copyLan").addEventListener("click", async () => {
   el.classList.toggle("error", !result.ok);
   clearTimeout(lanResultTimer);
   lanResultTimer = setTimeout(() => (el.textContent = ""), 8000);
+});
+
+// Room volume: one slider for every device in the room (and this Mac). Changes go to
+// the server, which broadcasts them back, so the web app's slider and this one agree.
+let draggingVolume = false;
+let volumeSendTimer = null;
+const roomVolume = $("roomVolume");
+
+const renderRoomVolume = (status) => {
+  const connected = ["ready", "live"].includes(status.phase);
+  roomVolume.disabled = !connected || !status.canControl;
+  if (!draggingVolume) roomVolume.value = String(Math.round(status.globalVolume * 100));
+  $("roomVolumeOut").textContent = connected ? `${roomVolume.value}%` : "–";
+  $("roomVolumeHelp").textContent =
+    connected && !status.canControl
+      ? "Only the room admin can change this (or make playback controls open to everyone)"
+      : "Sets the volume on every device in the room, this Mac included";
+};
+
+roomVolume.addEventListener("input", () => {
+  draggingVolume = true;
+  $("roomVolumeOut").textContent = `${roomVolume.value}%`;
+  // Throttle: the server rebroadcasts every change to the whole room
+  if (volumeSendTimer) return;
+  volumeSendTimer = setTimeout(() => {
+    volumeSendTimer = null;
+    api.setRoomVolume(Number(roomVolume.value) / 100);
+  }, 60);
+});
+roomVolume.addEventListener("change", () => {
+  draggingVolume = false;
+  api.setRoomVolume(Number(roomVolume.value) / 100);
 });
 
 api.onStatus(renderStatus);

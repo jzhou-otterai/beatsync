@@ -3,6 +3,7 @@ import {
   NTP_CONSTANTS,
   WSResponseSchema,
   type LiveStreamInfoType,
+  type PlaybackControlsPermissionsType,
   type WSRequestType,
 } from "@beatsync/shared";
 import { ServerClock } from "./clock";
@@ -26,6 +27,10 @@ export interface BroadcasterStatus {
   offsetMs: number;
   ntpMeasurements: number;
   isAdmin: boolean;
+  /** Room-wide volume (0-1) every listener applies; shared with the web app's volume slider */
+  globalVolume: number;
+  /** Whether this client may change room settings like the volume */
+  canControl: boolean;
   listeners: number;
   framesSent: number;
   framesDropped: number;
@@ -33,12 +38,29 @@ export interface BroadcasterStatus {
   liveStream: LiveStreamInfoType | null;
 }
 
+export const initialBroadcasterStatus = (): BroadcasterStatus => ({
+  phase: "idle",
+  rttMs: 0,
+  offsetMs: 0,
+  ntpMeasurements: 0,
+  isAdmin: false,
+  globalVolume: 1,
+  canControl: false,
+  listeners: 0,
+  framesSent: 0,
+  framesDropped: 0,
+  reanchors: 0,
+  liveStream: null,
+});
+
 export interface BroadcasterOptions {
   wsUrl: string;
   roomId: string;
   username: string;
   clientId: string;
   onStatus: (status: BroadcasterStatus) => void;
+  /** The room volume changed (from this app, the web app, or on joining) */
+  onGlobalVolume?: (volume: number) => void;
 }
 
 /**
@@ -56,21 +78,11 @@ export class Broadcaster {
   private streamId: number | null = null;
   private pendingStart: { format: CaptureFormat; latencyMs: number; sourceName: string } | null = null;
   private closedByUser = false;
+  private permissions: PlaybackControlsPermissionsType = "ADMIN_ONLY";
   private startTimeout: ReturnType<typeof setTimeout> | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectDelayMs = RECONNECT_MIN_MS;
-  private status: BroadcasterStatus = {
-    phase: "idle",
-    rttMs: 0,
-    offsetMs: 0,
-    ntpMeasurements: 0,
-    isAdmin: false,
-    listeners: 0,
-    framesSent: 0,
-    framesDropped: 0,
-    reanchors: 0,
-    liveStream: null,
-  };
+  private status: BroadcasterStatus = initialBroadcasterStatus();
 
   constructor(private readonly opts: BroadcasterOptions) {}
 
@@ -162,6 +174,11 @@ export class Broadcaster {
     this.status.reanchors = this.chunker.reanchors;
   }
 
+  /** Set the volume for everyone in the room. Takes effect when the server broadcasts it back. */
+  setGlobalVolume(volume: number): void {
+    this.send({ type: ClientActionEnum.enum.SET_GLOBAL_VOLUME, volume: Math.max(0, Math.min(1, volume)) });
+  }
+
   getStatus(): BroadcasterStatus {
     return { ...this.status };
   }
@@ -212,6 +229,12 @@ export class Broadcaster {
         }
         break;
       }
+      case "SCHEDULED_ACTION":
+        if (msg.scheduledAction.type === "GLOBAL_VOLUME_CONFIG") {
+          this.update({ globalVolume: msg.scheduledAction.volume });
+          this.opts.onGlobalVolume?.(msg.scheduledAction.volume);
+        }
+        break;
       case "LIVENESS_PING":
         this.send({ type: ClientActionEnum.enum.LIVENESS_PONG });
         break;
@@ -219,7 +242,15 @@ export class Broadcaster {
         const { event } = msg;
         if (event.type === "CLIENT_CHANGE") {
           const self = event.clients.find((c) => c.clientId === this.opts.clientId);
-          this.update({ isAdmin: self?.isAdmin ?? false, listeners: Math.max(0, event.clients.length - 1) });
+          const isAdmin = self?.isAdmin ?? false;
+          this.update({
+            isAdmin,
+            canControl: isAdmin || this.permissions === "EVERYONE",
+            listeners: Math.max(0, event.clients.length - 1),
+          });
+        } else if (event.type === "SET_PLAYBACK_CONTROLS") {
+          this.permissions = event.permissions;
+          this.update({ canControl: this.status.isAdmin || event.permissions === "EVERYONE" });
         } else if (event.type === "LIVE_STREAM_STATE") {
           this.handleLiveStreamState(event.liveStream);
         }
