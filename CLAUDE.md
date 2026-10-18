@@ -9,6 +9,7 @@ Beatsync is a high-precision web audio player for multi-device synchronized play
 - **`apps/client`**: Next.js 15 (App Router, React 19, Tailwind v4, Shadcn/ui)
 - **`apps/server`**: Bun HTTP + WebSocket server (native `Bun.serve`, not Hono routing)
 - **`packages/shared`**: Zod schemas shared across client/server (`@beatsync/shared`)
+- **`apps/desktop`**: Electron app (macOS 14.2+) that broadcasts the Mac's system audio into a room via a Swift Core Audio tap helper (`native/SystemAudioTap.swift`). Run with `bun run desktop`
 
 ## Commands
 
@@ -95,6 +96,13 @@ When play is requested, the server doesn't immediately schedule playback. Instea
 1. Server broadcasts `LOAD_AUDIO_SOURCE` to all clients
 2. Clients load/decode the audio and respond with `AUDIO_SOURCE_LOADED`
 3. Server waits for all clients (or 3s timeout) then schedules synchronized play
+
+### Live Streams
+
+A room can have one live broadcaster (the desktop app) instead of file playback:
+- `START_LIVE_STREAM` (requires playback control) pauses the queue and broadcasts `ROOM_EVENT`/`LIVE_STREAM_STATE`; `STOP_LIVE_STREAM` or the broadcaster disconnecting clears it
+- Audio arrives as **binary** WebSocket frames (`packages/shared/liveStream.ts`: 24-byte header + s16le PCM). `handleMessage` relays them with `ws.publish` only if they come from the current broadcaster with the current `streamId`
+- Each frame carries `playAtServerTime`; `apps/client/src/lib/liveStreamPlayer.ts` schedules frames back to back using the NTP offset and corrects drift via `playbackRate`
 
 ### Spatial Audio
 

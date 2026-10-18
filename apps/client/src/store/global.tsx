@@ -20,6 +20,7 @@ import {
   ClientActionEnum,
   ClientDataType,
   GlobalVolumeConfigType,
+  LiveStreamInfoType,
   LowPassConfigType,
   MetronomeConfigType,
   GRID,
@@ -92,6 +93,9 @@ interface GlobalStateValues {
   isInitingSystem: boolean;
   hasUserStartedSystem: boolean; // Track if user has clicked "Start System" at least once
   selectedAudioUrl: string;
+
+  // Live stream (e.g. a Mac broadcasting its system audio via the desktop app)
+  liveStream: LiveStreamInfoType | null;
 
   // Websocket
   socket: WebSocket | null;
@@ -192,6 +196,7 @@ interface GlobalState extends GlobalStateValues {
   resetNTPConfig: () => void;
   addProbePairResult: (result: NTPMeasurement) => void;
   onConnectionReset: () => void;
+  setLiveStream: (liveStream: LiveStreamInfoType | null) => void;
   playAudio: (data: { offset: number; when: number; absoluteStartTime?: number; audioIndex?: number }) => void;
   processSpatialConfig: (config: SpatialConfigType) => void;
   pauseAudio: (data: { when: number }) => void;
@@ -269,6 +274,7 @@ const initialState: GlobalStateValues = {
   roundTripEstimate: 0,
   isSynced: false,
   nudgeOffsetMs: 0,
+  liveStream: null,
   probeStats: { totalSent: 0, pureCount: 0, impureCount: 0 },
 
   // Loading state
@@ -1080,6 +1086,16 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
         getKickBuffer(audioContextManager.getContext());
       }
     },
+    setLiveStream: (liveStream) => {
+      const state = get();
+      // Live audio takes over the speakers: stop local file playback immediately
+      // (the server also schedules a room-wide pause for everyone in sync)
+      if (liveStream && state.isPlaying) {
+        state.pauseAudio({ when: 0 });
+      }
+      set({ liveStream });
+    },
+
     onConnectionReset: () => {
       const state = get();
 

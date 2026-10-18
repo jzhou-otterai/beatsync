@@ -1,0 +1,64 @@
+{
+  "name": "desktop",
+  "productName": "Beatsync Speaker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Stream your Mac's system audio into a Beatsync room",
+  "main": "dist/main.js",
+  "scripts": {
+    "build:native": "bash scripts/build-native.sh",
+    "build:app": "bun run build:native && bun run bundle",
+    "bundle": "bun build src/main.ts src/preload.ts --target=node --format=cjs --outdir=dist --external electron --sourcemap",
+    "app": "bun run build:app && bash scripts/ensure-electron.sh && electron .",
+    "dist": "bun run build:app && bash scripts/ensure-electron.sh && electron-builder --mac --publish never",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@beatsync/shared": "workspace:*",
+    "@types/bun": "1.3.14",
+    "electron": "44.9.0",
+    "electron-builder": "26.15.3",
+    "typescript": "6.0.3"
+  },
+  "build": {
+    "appId": "gg.beatsync.speaker",
+    "productName": "Beatsync Speaker",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "renderer/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "bin/beatsync-audio-tap",
+        "to": "bin/beatsync-audio-tap"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.music",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "minimumSystemVersion": "14.2",
+      "identity": null,
+      "extendInfo": {
+        "NSAudioCaptureUsageDescription": "Beatsync Speaker streams your Mac's audio to the devices in your Beatsync room."
+      }
+    }
+  }
+}

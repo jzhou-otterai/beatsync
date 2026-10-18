@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'" />
+    <title>Beatsync Speaker</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="drag"></div>
+    <main>
+      <header>
+        <h1>Beatsync Speaker</h1>
+        <p class="sub">Play your Mac's audio through every device in a Beatsync room.</p>
+      </header>
+
+      <form id="form">
+        <label>
+          <span>Room code</span>
+          <input id="roomId" inputmode="numeric" maxlength="6" pattern="\d{6}" placeholder="123456" required />
+        </label>
+        <label>
+          <span>Your name</span>
+          <input id="username" maxlength="40" required />
+        </label>
+
+        <label class="toggle">
+          <input id="muteLocalOutput" type="checkbox" />
+          <span>
+            Mute this Mac while streaming
+            <small>Turns the Mac into a sender only, so it doesn't play ahead of the room</small>
+          </span>
+        </label>
+
+        <details>
+          <summary>Advanced</summary>
+          <label>
+            <span>Buffer <output id="latencyOut"></output></span>
+            <input id="latencyMs" type="range" min="100" max="2000" step="50" />
+            <small>Lower is snappier; raise it if devices stutter on a busy network</small>
+          </label>
+          <label>
+            <span>Server WebSocket URL</span>
+            <input id="wsUrl" type="url" required />
+          </label>
+          <label>
+            <span>Web app URL</span>
+            <input id="webUrl" type="url" required />
+          </label>
+        </details>
+
+        <button id="toggle" type="submit">Start streaming</button>
+      </form>
+
+      <section class="status">
+        <div class="row">
+          <span id="dot" class="dot"></span>
+          <span id="phase">Not streaming</span>
+        </div>
+        <p id="message" class="message"></p>
+        <div class="meter"><div id="level"></div></div>
+        <dl id="stats">
+          <div>
+            <dt>RTT</dt>
+            <dd id="rtt">–</dd>
+          </div>
+          <div>
+            <dt>Clock offset</dt>
+            <dd id="offset">–</dd>
+          </div>
+          <div>
+            <dt>Others in room</dt>
+            <dd id="listeners">–</dd>
+          </div>
+          <div>
+            <dt>Frames sent</dt>
+            <dd id="frames">–</dd>
+          </div>
+        </dl>
+        <button id="openRoom" class="link" type="button">Open room in browser ↗</button>
+      </section>
+    </main>
+    <script src="renderer.js"></script>
+  </body>
+</html>
