@@ -9,7 +9,7 @@ contextBridge.exposeInMainWorld("beatsync", {
   installDevice: () => ipcRenderer.invoke("install-device"),
   onDevice: (cb: (status: unknown) => void) => ipcRenderer.on("device", (_e, status) => cb(status)),
   openSoundSettings: () => ipcRenderer.invoke("open-sound-settings"),
-  onRouted: (cb: (previousOutput: string) => void) => ipcRenderer.on("routed", (_e, name: string) => cb(name)),
+  onNote: (cb: (note: unknown) => void) => ipcRenderer.on("note", (_e, note) => cb(note)),
   copyLanLink: (form: { webUrl: string; roomId: string }) => ipcRenderer.invoke("copy-lan-link", form),
   onStatus: (cb: (status: unknown) => void) => ipcRenderer.on("status", (_e, status) => cb(status)),
   onLevel: (cb: (level: number) => void) => ipcRenderer.on("level", (_e, level: number) => cb(level)),

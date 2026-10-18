@@ -47,6 +47,16 @@
           </span>
         </label>
 
+        <label class="toggle">
+          <input id="playOnMac" type="checkbox" />
+          <span>
+            Also play on this Mac
+            <small
+              >Plays through your Mac's speakers too, delayed by the buffer so it stays in sync with the room</small
+            >
+          </span>
+        </label>
+
         <details>
           <summary>Advanced</summary>
           <label>
@@ -97,6 +107,7 @@
           <button id="openRoom" class="link" type="button">Open room in browser ↗</button>
         </div>
         <p id="lanResult" class="lan-result"></p>
+        <p id="notes" class="lan-result"></p>
       </section>
     </main>
     <script src="renderer.js"></script>

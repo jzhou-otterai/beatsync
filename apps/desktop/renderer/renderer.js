@@ -18,6 +18,7 @@ const readForm = () => ({
   roomId: $("roomId").value.trim(),
   username: $("username").value.trim(),
   routeOutput: $("routeOutput").checked,
+  playOnMac: $("playOnMac").checked,
   latencyMs: Number($("latencyMs").value),
   wsUrl: $("wsUrl").value.trim(),
   webUrl: $("webUrl").value.trim(),
@@ -27,6 +28,7 @@ const fillForm = (s) => {
   $("roomId").value = s.roomId;
   $("username").value = s.username;
   $("routeOutput").checked = s.routeOutput;
+  $("playOnMac").checked = s.playOnMac;
   $("latencyMs").value = String(s.latencyMs);
   $("wsUrl").value = s.wsUrl;
   $("webUrl").value = s.webUrl;
@@ -42,7 +44,8 @@ const setRunning = (value) => {
   const btn = $("toggle");
   btn.textContent = running ? "Stop streaming" : "Start streaming";
   btn.classList.toggle("stop", running);
-  for (const id of ["roomId", "username", "routeOutput", "latencyMs", "wsUrl", "webUrl"]) $(id).disabled = running;
+  for (const id of ["roomId", "username", "routeOutput", "playOnMac", "latencyMs", "wsUrl", "webUrl"])
+    $(id).disabled = running;
   $("toggle").disabled = !running && !deviceReady;
 };
 
@@ -66,7 +69,11 @@ const renderStatus = (status) => {
       ? `${status.framesSent}${status.framesDropped ? ` (${status.framesDropped} dropped)` : ""}`
       : "–";
 
-  if (status.phase === "idle") setRunning(false);
+  if (status.phase === "idle") {
+    setRunning(false);
+    Object.assign(notes, { routedFrom: null, monitoring: null, warning: null });
+    $("notes").textContent = "";
+  }
   // Install and Microphone permission both happen while starting; show where they ended up
   if (status.phase === "live" && lastPhase !== "live") checkDevice();
   lastPhase = status.phase;
@@ -105,10 +112,19 @@ const checkDevice = async () => renderDevice(await api.deviceStatus());
 $("recheckDevice").addEventListener("click", checkDevice);
 api.onDevice(renderDevice);
 $("openSound").addEventListener("click", () => api.openSoundSettings());
-api.onRouted((previousOutput) => {
-  const el = $("lanResult");
-  el.classList.remove("error");
-  el.textContent = `Mac output switched to Beatsync (was ${previousOutput}). It switches back when you stop.`;
+// What the helper did with the Mac's own audio while starting
+const notes = { routedFrom: null, monitoring: null, warning: null };
+api.onNote((note) => {
+  Object.assign(notes, note);
+  const parts = [];
+  if (notes.routedFrom)
+    parts.push(`Mac output switched to Beatsync (was ${notes.routedFrom}); it switches back when you stop.`);
+  if (notes.monitoring)
+    parts.push(`Also playing on ${notes.monitoring.device}, ${notes.monitoring.delayMs} ms behind to match the room.`);
+  if (notes.warning) parts.push(notes.warning);
+  const el = $("notes");
+  el.textContent = parts.join(" ");
+  el.classList.toggle("error", !!notes.warning);
 });
 
 $("form").addEventListener("submit", async (e) => {

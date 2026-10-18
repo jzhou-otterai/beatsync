@@ -16,7 +16,10 @@ export interface AudioCaptureCallbacks {
   onFormat: (format: CaptureFormat) => void;
   onData: (pcm: Buffer) => void;
   onRouted: (previousOutput: string) => void;
+  /** Also playing on the Mac's own output, held back by `delayMs` to match the room */
+  onMonitoring: (device: string, delayMs: number) => void;
   onError: (message: string) => void;
+  onWarning: (message: string) => void;
   /** `error` is the last error the helper reported, if it exited because of one */
   onExit: (error: string | null) => void;
 }
@@ -28,6 +31,8 @@ interface HelperEvent {
   sampleRate?: number;
   channels?: number;
   previousOutput?: string;
+  device?: string;
+  delayMs?: number;
   installed?: boolean;
   microphone?: DeviceStatus["microphone"];
 }
@@ -55,10 +60,17 @@ export class AudioCapture {
 
   constructor(private readonly helperPath: string) {}
 
-  start(options: { routeOutput: boolean }, callbacks: AudioCaptureCallbacks): void {
+  start(
+    options: { routeOutput: boolean; playOnMac: boolean; delayMs: number },
+    callbacks: AudioCaptureCallbacks
+  ): void {
     if (this.proc) return;
 
-    const args = ["capture", ...(options.routeOutput ? ["--route"] : [])];
+    const args = [
+      "capture",
+      ...(options.routeOutput ? ["--route"] : []),
+      ...(options.playOnMac ? ["--monitor", "--delay-ms", String(Math.round(options.delayMs))] : []),
+    ];
     const proc = spawn(this.helperPath, args, { stdio: ["pipe", "pipe", "pipe"] });
     this.proc = proc;
     let lastError: string | null = null;
@@ -75,9 +87,16 @@ export class AudioCapture {
       }
       if (event.event === "format" && event.sampleRate && event.channels) {
         callbacks.onFormat({ sampleRate: event.sampleRate, channels: event.channels });
+      } else if (event.event === "monitoring") {
+        callbacks.onMonitoring(event.device ?? "this Mac", event.delayMs ?? 0);
       } else if (event.event === "routed") {
         callbacks.onRouted(event.previousOutput ?? "previous output");
       } else if (event.event === "error") {
+        // Monitor problems are warnings: the room still gets audio
+        if (event.code?.startsWith("monitor-")) {
+          callbacks.onWarning(event.message ?? "Can't play on this Mac too");
+          return;
+        }
         lastError = event.message ?? "Unknown capture error";
         callbacks.onError(lastError);
       }

@@ -17,6 +17,8 @@ export interface Settings {
   latencyMs: number;
   /** Make Beatsync the Mac's output while streaming, and switch back afterwards */
   routeOutput: boolean;
+  /** Keep playing on the Mac's own speakers too, delayed to match the room */
+  playOnMac: boolean;
   clientId: string;
 }
 
@@ -30,6 +32,7 @@ const loadSettings = (): Settings => {
     username: hostname().replace(/\.local$/, ""),
     latencyMs: LIVE_STREAM_CONSTANTS.DEFAULT_LATENCY_MS,
     routeOutput: true,
+    playOnMac: true,
     clientId: randomUUID(),
   };
   try {
@@ -141,7 +144,7 @@ const start = async (next: Omit<Settings, "clientId">) => {
   const c = new AudioCapture(helperPath());
   capture = c;
   c.start(
-    { routeOutput: settings.routeOutput },
+    { routeOutput: settings.routeOutput, playOnMac: settings.playOnMac, delayMs: settings.latencyMs },
     {
       onFormat: (format) => {
         // A format change mid-stream (e.g. sample rate changed in Audio MIDI Setup) needs a fresh stream
@@ -152,7 +155,9 @@ const start = async (next: Omit<Settings, "clientId">) => {
         peakLevel = Math.max(peakLevel, peakOf(pcm));
         b.pushPcm(pcm);
       },
-      onRouted: (previousOutput) => win?.webContents.send("routed", previousOutput),
+      onRouted: (previousOutput) => win?.webContents.send("note", { routedFrom: previousOutput }),
+      onMonitoring: (device, delayMs) => win?.webContents.send("note", { monitoring: { device, delayMs } }),
+      onWarning: (message) => win?.webContents.send("note", { warning: message }),
       onError: (message) => sendStatus({ ...b.getStatus(), phase: "error", message }),
       onExit: (error) => {
         if (capture !== c) return;
@@ -187,7 +192,7 @@ const idleStatus = (): BroadcasterStatus => ({
 const createWindow = () => {
   win = new BrowserWindow({
     width: 420,
-    height: 800,
+    height: 860,
     minWidth: 420,
     maxWidth: 420,
     minHeight: 560,
