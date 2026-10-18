@@ -235,3 +235,21 @@ dd {
   margin: 0;
   font-variant-numeric: tabular-nums;
 }
+.links {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.lan-result {
+  margin: 0;
+  font-size: 11px;
+  color: var(--accent);
+  user-select: text;
+  word-break: break-all;
+}
+.lan-result:empty {
+  display: none;
+}
+.lan-result.error {
+  color: #fca5a5;
+}

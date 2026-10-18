@@ -7,6 +7,26 @@
 
 let cached: { apiUrl: string; wsUrl: string } | null = null;
 
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+/**
+ * A localhost server URL only works on the machine running the server. When the page
+ * itself was opened over the LAN (e.g. http://192.168.1.20:3000 on a phone), point the
+ * server URL at that same host so other devices on the network can join a dev setup.
+ */
+function withPageHost(url: string): string {
+  if (typeof window === "undefined") return url;
+  const pageHost = window.location.hostname;
+  try {
+    const parsed = new URL(url);
+    if (!LOOPBACK_HOSTS.has(parsed.hostname) || LOOPBACK_HOSTS.has(pageHost)) return url;
+    parsed.hostname = pageHost;
+    return parsed.toString().replace(/\/$/, "");
+  } catch {
+    return url;
+  }
+}
+
 function resolve(): { apiUrl: string; wsUrl: string } {
   if (cached) return cached;
 
@@ -14,7 +34,7 @@ function resolve(): { apiUrl: string; wsUrl: string } {
   const envWs = process.env.NEXT_PUBLIC_WS_URL;
 
   if (envApi && envWs) {
-    cached = { apiUrl: envApi, wsUrl: envWs };
+    cached = { apiUrl: withPageHost(envApi), wsUrl: withPageHost(envWs) };
   } else if (typeof window !== "undefined") {
     const { protocol, host } = window.location;
     const isSecure = protocol === "https:";

@@ -33,7 +33,11 @@ In the app, enter a room code and click **Start streaming**. The first time you 
 let the app record system audio. Allow it, then stop and start the stream again. You can change this later in
 System Settings → Privacy & Security → Screen & System Audio Recording.
 
-Open the same room on your other devices and click **Start System**. Instead of the track player,
+Open the same room on your other devices and click **Start System**. On a home network, **Copy LAN
+join link** puts a link like `http://192.168.1.20:3000/room/123456` on the clipboard. It swaps
+`localhost` in the web app URL for the Mac's Wi-Fi address. With the dev setup, the web client
+does the same for its server URL, so phones reach the server on the Mac too. The first time
+another device connects, macOS may ask whether `bun`/`node` can accept incoming connections. Instead of the track player,
 they show a "Live from …" banner.
 
 To build a distributable `.dmg` (universal, unsigned):

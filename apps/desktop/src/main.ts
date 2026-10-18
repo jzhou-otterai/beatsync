@@ -1,11 +1,12 @@
 import { LIVE_STREAM_CONSTANTS } from "@beatsync/shared";
-import { app, BrowserWindow, ipcMain, shell } from "electron";
+import { app, BrowserWindow, clipboard, ipcMain, shell } from "electron";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { hostname } from "node:os";
+import { hostname, networkInterfaces } from "node:os";
 import path from "node:path";
 import { AudioTap } from "./audioTap";
 import { Broadcaster, type BroadcasterStatus } from "./broadcaster";
+import { findLanAddress, lanJoinUrl } from "./lanUrl";
 
 export interface Settings {
   wsUrl: string;
@@ -174,6 +175,13 @@ app.whenReady().then(() => {
   ipcMain.handle("stop", () => {
     stopAll();
     sendStatus(idleStatus());
+  });
+  ipcMain.handle("copy-lan-link", (_event, form: { webUrl: string; roomId: string }) => {
+    if (!/^\d{6}$/.test(form.roomId)) return { ok: false, message: "Enter a 6-digit room code first" };
+    const url = lanJoinUrl(form.webUrl, form.roomId, findLanAddress(networkInterfaces()));
+    if (!url) return { ok: false, message: "Couldn't find this Mac's local network address — is Wi-Fi connected?" };
+    clipboard.writeText(url);
+    return { ok: true, url };
   });
   ipcMain.handle("open-room", () => {
     if (settings.roomId) shell.openExternal(`${settings.webUrl.replace(/\/$/, "")}/room/${settings.roomId}`);

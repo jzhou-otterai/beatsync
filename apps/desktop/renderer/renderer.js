@@ -82,6 +82,17 @@ $("form").addEventListener("submit", async (e) => {
 
 $("openRoom").addEventListener("click", () => api.openRoom());
 
+let lanResultTimer;
+$("copyLan").addEventListener("click", async () => {
+  const { roomId, webUrl } = readForm();
+  const result = await api.copyLanLink({ roomId, webUrl });
+  const el = $("lanResult");
+  el.textContent = result.ok ? `Copied ${result.url}` : result.message;
+  el.classList.toggle("error", !result.ok);
+  clearTimeout(lanResultTimer);
+  lanResultTimer = setTimeout(() => (el.textContent = ""), 8000);
+});
+
 api.onStatus(renderStatus);
 api.onLevel((level) => {
   // Perceptual-ish scaling so quiet audio still moves the meter
