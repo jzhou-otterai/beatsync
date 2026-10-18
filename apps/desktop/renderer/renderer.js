@@ -74,7 +74,11 @@ const renderStatus = (status) => {
     setRunning(false);
     Object.assign(notes, { routedFrom: null, monitoring: null, warning: null });
     $("notes").textContent = "";
+  } else if (!running) {
+    // Started from the menu bar
+    setRunning(true);
   }
+
   // Install and Microphone permission both happen while starting; show where they ended up
   if (status.phase === "live" && lastPhase !== "live") checkDevice();
   lastPhase = status.phase;

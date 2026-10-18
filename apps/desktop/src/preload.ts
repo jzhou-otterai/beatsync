@@ -4,6 +4,8 @@ contextBridge.exposeInMainWorld("beatsync", {
   getInitialState: () => ipcRenderer.invoke("get-initial-state"),
   start: (settings: unknown) => ipcRenderer.invoke("start", settings),
   stop: () => ipcRenderer.invoke("stop"),
+  startSaved: () => ipcRenderer.invoke("start-saved"),
+  showMain: () => ipcRenderer.invoke("show-main"),
   openRoom: () => ipcRenderer.invoke("open-room"),
   setRoomVolume: (volume: number) => ipcRenderer.invoke("set-room-volume", volume),
   deviceStatus: () => ipcRenderer.invoke("device-status"),

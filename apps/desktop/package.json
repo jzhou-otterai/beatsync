@@ -10,7 +10,7 @@
     "build:app": "bun run build:native && bun run bundle",
     "bundle": "bun build src/main.ts src/preload.ts --target=node --format=cjs --outdir=dist --external electron --sourcemap",
     "app": "bun run build:app && bash scripts/ensure-electron.sh && electron .",
-    "dist": "bun run build:app && bash scripts/ensure-electron.sh && electron-builder --mac --publish never",
+    "dist": "bun run build:app && bash scripts/ensure-electron.sh && bash scripts/dist.sh",
     "typecheck": "tsc --noEmit",
     "test": "bun test"
   },
@@ -30,6 +30,7 @@
     "files": [
       "dist/**",
       "renderer/**",
+      "resources/*.png",
       "package.json"
     ],
     "extraResources": [
@@ -50,19 +51,38 @@
           "arch": [
             "universal"
           ]
-        },
-        {
-          "target": "zip",
-          "arch": [
-            "universal"
-          ]
         }
       ],
       "minimumSystemVersion": "13.0",
-      "identity": null,
       "extendInfo": {
         "NSMicrophoneUsageDescription": "Beatsync Speaker reads the Beatsync audio device (what your Mac plays to it) to stream it to your room."
-      }
+      },
+      "icon": "resources/icon.icns",
+      "hardenedRuntime": true,
+      "entitlements": "resources/entitlements.mac.plist",
+      "entitlementsInherit": "resources/entitlements.mac.plist",
+      "notarize": false
+    },
+    "afterPack": "scripts/after-pack.cjs",
+    "dmg": {
+      "title": "Beatsync Speaker",
+      "icon": "resources/icon.icns",
+      "window": {
+        "width": 540,
+        "height": 380
+      },
+      "contents": [
+        {
+          "x": 140,
+          "y": 180
+        },
+        {
+          "x": 400,
+          "y": 180,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
     }
   }
 }

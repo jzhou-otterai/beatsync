@@ -1,0 +1,25 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- macOS icon grid: 824×824 body inset 100px, with a soft drop shadow -->
+  <defs>
+    <linearGradient id="body" x1="512" y1="100" x2="512" y2="924" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#262626"/>
+      <stop offset="1" stop-color="#0d0d0d"/>
+    </linearGradient>
+    <radialGradient id="cone" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(492 492) scale(150)">
+      <stop offset="0" stop-color="#4ade80"/>
+      <stop offset="1" stop-color="#16a34a"/>
+    </radialGradient>
+    <filter id="shadow" x="60" y="80" width="904" height="904" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="12" stdDeviation="14" flood-color="#000" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#body)" filter="url(#shadow)"/>
+  <rect x="100.5" y="100.5" width="823" height="823" rx="184.5" stroke="#ffffff" stroke-opacity="0.06"/>
+  <!-- Beatsync ring + sync arc -->
+  <circle cx="512" cy="512" r="282" stroke="#3f3f3f" stroke-width="54"/>
+  <path d="M512 230 A282 282 0 1 1 312.6 711.4" stroke="#ffffff" stroke-width="54" stroke-linecap="round"/>
+  <!-- Speaker cone -->
+  <circle cx="512" cy="512" r="150" fill="url(#cone)"/>
+  <circle cx="512" cy="512" r="96" fill="#0f2e1a" fill-opacity="0.55"/>
+  <circle cx="512" cy="512" r="42" fill="#bbf7d0"/>
+</svg>

@@ -8,6 +8,7 @@ import { AudioCapture, probeDevice } from "./audioCapture";
 import { Broadcaster, initialBroadcasterStatus, type BroadcasterStatus } from "./broadcaster";
 import { driverNeedsInstall, installDriver } from "./driverInstall";
 import { findLanAddress, lanJoinUrl } from "./lanUrl";
+import { MenuBar } from "./tray";
 
 export interface Settings {
   wsUrl: string;
@@ -79,21 +80,28 @@ const ensureDevice = async (): Promise<string | null> => {
   if (!result.ok) return result.message;
 
   const after = await waitForDevice();
-  win?.webContents.send("device", after);
+  sendToAll("device", after);
   return after.installed
     ? null
     : "Installed the audio device, but Core Audio hasn't picked it up yet. Try restarting your Mac.";
 };
 
 let win: BrowserWindow | null = null;
+let menuBar: MenuBar | null = null;
 let settings: Settings;
 let broadcaster: Broadcaster | null = null;
 let capture: AudioCapture | null = null;
 let peakLevel = 0;
 let levelTimer: ReturnType<typeof setInterval> | null = null;
 
+/** Send to every renderer: the main window and the menu bar popover */
+const sendToAll = (channel: string, payload: unknown) => {
+  for (const w of BrowserWindow.getAllWindows()) w.webContents.send(channel, payload);
+};
+
 const sendStatus = (status: BroadcasterStatus) => {
-  win?.webContents.send("status", status);
+  sendToAll("status", status);
+  menuBar?.updateStatus(status);
 };
 
 const peakOf = (pcm: Buffer): number => {
@@ -158,9 +166,9 @@ const start = async (next: Omit<Settings, "clientId">) => {
         peakLevel = Math.max(peakLevel, peakOf(pcm));
         b.pushPcm(pcm);
       },
-      onRouted: (previousOutput) => win?.webContents.send("note", { routedFrom: previousOutput }),
-      onMonitoring: (device, delayMs) => win?.webContents.send("note", { monitoring: { device, delayMs } }),
-      onWarning: (message) => win?.webContents.send("note", { warning: message }),
+      onRouted: (previousOutput) => sendToAll("note", { routedFrom: previousOutput }),
+      onMonitoring: (device, delayMs) => sendToAll("note", { monitoring: { device, delayMs } }),
+      onWarning: (message) => sendToAll("note", { warning: message }),
       onError: (message) => sendStatus({ ...b.getStatus(), phase: "error", message }),
       onExit: (error) => {
         if (capture !== c) return;
@@ -174,12 +182,20 @@ const start = async (next: Omit<Settings, "clientId">) => {
   );
 
   levelTimer = setInterval(() => {
-    win?.webContents.send("level", peakLevel);
+    sendToAll("level", peakLevel);
     peakLevel = 0;
   }, 100);
 };
 
 const idleStatus = initialBroadcasterStatus;
+
+const preloadPath = () => path.join(app.getAppPath(), "dist", "preload.js");
+
+const showMainWindow = () => {
+  if (!win) createWindow();
+  win?.show();
+  win?.focus();
+};
 
 const createWindow = () => {
   win = new BrowserWindow({
@@ -193,7 +209,7 @@ const createWindow = () => {
     backgroundColor: "#0a0a0a",
     webPreferences: {
       // getAppPath(), not __dirname: the bundler inlines __dirname as the source directory
-      preload: path.join(app.getAppPath(), "dist", "preload.js"),
+      preload: preloadPath(),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -214,6 +230,20 @@ app.whenReady().then(() => {
     return { settings: rest, status: broadcaster?.getStatus() ?? idleStatus() };
   });
   ipcMain.handle("start", (_event, next: Omit<Settings, "clientId">) => start(next));
+  // Menu bar popover: start with the saved settings, or bring up the full window
+  ipcMain.handle("start-saved", () => {
+    if (!/^\d{6}$/.test(settings.roomId)) {
+      showMainWindow();
+      return { ok: false, message: "Set a room code first" };
+    }
+    const { clientId: _clientId, ...rest } = settings;
+    void start(rest);
+    return { ok: true };
+  });
+  ipcMain.handle("show-main", () => {
+    menuBar?.hidePopover();
+    showMainWindow();
+  });
   ipcMain.handle("stop", () => {
     stopAll();
     sendStatus(idleStatus());
@@ -241,16 +271,15 @@ app.whenReady().then(() => {
     if (settings.roomId) shell.openExternal(`${settings.webUrl.replace(/\/$/, "")}/room/${settings.roomId}`);
   });
 
+  // Packaged builds get the icon from icon.icns; in development, show it in the Dock too
+  if (!app.isPackaged) app.dock?.setIcon(path.join(app.getAppPath(), "resources", "icon.png"));
+  menuBar = new MenuBar({ preloadPath: preloadPath(), onShowMain: showMainWindow });
   createWindow();
-  app.on("activate", () => {
-    if (!win) createWindow();
-  });
+  app.on("activate", showMainWindow);
 });
 
-app.on("window-all-closed", () => {
-  stopAll();
-  app.quit();
-});
+// Closing the window keeps streaming from the menu bar; quit from the menu bar icon
+app.on("window-all-closed", () => {});
 
 // Make sure the helper stops (and switches the Mac back to its previous output) on quit
 app.on("before-quit", stopAll);

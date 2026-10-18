@@ -67,12 +67,33 @@ To remove the device:
 sudo rm -rf /Library/Audio/Plug-Ins/HAL/Beatsync.driver && sudo killall coreaudiod
 ```
 
-To build a distributable `.dmg` (universal, unsigned; the driver is bundled under
-`Contents/Resources/driver`):
+**Menu bar.** The app also lives in the menu bar (the ring icon, filled while you're live).
+Click it for a small widget showing the stream status, a level meter, Room volume and
+Start/Stop. Right-click for Open / Quit. Closing the main window keeps the app running there.
+
+## Install (DMG)
 
 ```bash
-cd apps/desktop && bun run dist      # output in apps/desktop/release/
+cd apps/desktop && bun run dist      # → release/Beatsync Speaker-<version>-universal.dmg
 ```
+
+Open the DMG and drag **Beatsync Speaker** into Applications. That's the whole install: the
+capture helper and the Beatsync audio driver ship inside the app, and the driver installs
+itself the first time you start streaming. The DMG is universal (Apple Silicon and Intel).
+
+**Signing.** Without an Apple Developer ID, the build is ad-hoc signed. It runs fine on the Mac
+that built it. On other Macs, Gatekeeper blocks the first launch: open System Settings → Privacy &
+Security and click **Open Anyway** (or run `xattr -dr com.apple.quarantine "/Applications/Beatsync Speaker.app"`).
+To produce a build that opens without warnings, sign and notarize it with a Developer ID:
+
+```bash
+CSC_NAME="Developer ID Application: Your Name (TEAMID)" \
+APPLE_ID=you@example.com APPLE_APP_SPECIFIC_PASSWORD=xxxx-xxxx-xxxx-xxxx APPLE_TEAM_ID=TEAMID \
+bun run dist --config.mac.notarize=true
+```
+
+The app icon and menu bar icons are generated from `resources/*.svg` by
+`scripts/build-icons.sh`. Re-run it after editing the artwork.
 
 ## How it works
 
