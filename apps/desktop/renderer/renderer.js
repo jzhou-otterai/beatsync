@@ -54,7 +54,8 @@ const renderStatus = (status) => {
   message.textContent = status.message ?? "";
   message.classList.toggle("error", status.phase === "error");
 
-  const active = status.phase !== "idle";
+  // Only show live numbers while actually connected to the room
+  const active = ["syncing", "ready", "live"].includes(status.phase);
   $("rtt").textContent = active && status.ntpMeasurements ? `${status.rttMs.toFixed(1)} ms` : "–";
   $("offset").textContent = active && status.ntpMeasurements ? `${status.offsetMs.toFixed(1)} ms` : "–";
   $("listeners").textContent = active ? String(status.listeners) : "–";

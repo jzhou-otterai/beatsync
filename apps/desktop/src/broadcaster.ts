@@ -11,6 +11,9 @@ import type { TapFormat } from "./audioTap";
 
 // How long to wait for the server to confirm START_LIVE_STREAM before assuming it was refused
 const START_CONFIRM_TIMEOUT_MS = 4000;
+// Reconnect backoff when the server is unreachable or drops us
+const RECONNECT_MIN_MS = 1000;
+const RECONNECT_MAX_MS = 10_000;
 // Stop queueing audio if the socket can't drain (slow uplink) — late audio is useless
 const MAX_BUFFERED_BYTES = 512 * 1024;
 
@@ -54,6 +57,8 @@ export class Broadcaster {
   private pendingStart: { format: TapFormat; latencyMs: number; sourceName: string } | null = null;
   private closedByUser = false;
   private startTimeout: ReturnType<typeof setTimeout> | null = null;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private reconnectDelayMs = RECONNECT_MIN_MS;
   private status: BroadcasterStatus = {
     phase: "idle",
     rttMs: 0,
@@ -77,34 +82,46 @@ export class Broadcaster {
     url.searchParams.set("clientId", clientId);
 
     this.closedByUser = false;
-    this.update({ phase: "connecting", message: undefined });
+    if (this.status.phase !== "error") this.update({ phase: "connecting", message: undefined });
     const ws = new WebSocket(url.toString());
     ws.binaryType = "arraybuffer";
     this.ws = ws;
+    let opened = false;
 
     ws.onopen = () => {
+      opened = true;
+      this.reconnectDelayMs = RECONNECT_MIN_MS;
       this.clock.reset();
-      this.update({ phase: "syncing" });
+      this.update({ phase: "syncing", message: undefined });
       this.scheduleProbes();
     };
     ws.onmessage = (event) => {
       if (typeof event.data === "string") this.handleMessage(event.data);
     };
-    ws.onerror = () => {
-      this.update({ phase: "error", message: `Could not connect to ${wsUrl}` });
-    };
     ws.onclose = () => {
       this.stopProbes();
       this.chunker = null;
-      this.ws = null;
-      if (!this.closedByUser && this.status.phase !== "error") {
-        this.update({ phase: "error", message: "Disconnected from server" });
-      }
+      if (this.ws === ws) this.ws = null;
+      if (this.closedByUser) return;
+
+      // Keep pendingStart: once we reconnect and resync, the stream restarts by itself
+      const retrySeconds = Math.round(this.reconnectDelayMs / 1000);
+      this.update({
+        phase: "error",
+        liveStream: null,
+        message: opened
+          ? `Lost connection to the server. Reconnecting in ${retrySeconds}s…`
+          : `Can't reach a Beatsync server at ${wsUrl}. Is it running, and is it the only thing on that port? Retrying in ${retrySeconds}s…`,
+      });
+      this.reconnectTimer = setTimeout(() => this.connect(), this.reconnectDelayMs);
+      this.reconnectDelayMs = Math.min(this.reconnectDelayMs * 2, RECONNECT_MAX_MS);
     };
   }
 
   disconnect(): void {
     this.closedByUser = true;
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
     this.stopStream();
     this.stopProbes();
     this.ws?.close();

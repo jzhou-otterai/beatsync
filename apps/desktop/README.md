@@ -24,6 +24,11 @@ bun dev                     # server on :8080, web client on :3000
 bun run desktop             # builds the helper and launches the app
 ```
 
+If port 8080 is already taken (`bun dev` prints `EADDRINUSE`), run the server on another port.
+Put `PORT=8090` in `apps/server/.env`, point the web client at it in `apps/client/.env.local`
+(`NEXT_PUBLIC_API_URL=http://localhost:8090`, `NEXT_PUBLIC_WS_URL=ws://localhost:8090/ws`), and set
+the app's **Advanced → Server WebSocket URL** to `ws://localhost:8090/ws`.
+
 In the app, enter a room code and click **Start streaming**. The first time you do this, macOS asks to
 let the app record system audio. Allow it, then stop and start the stream again. You can change this later in
 System Settings → Privacy & Security → Screen & System Audio Recording.

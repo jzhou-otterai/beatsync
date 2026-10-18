@@ -142,7 +142,9 @@ const createWindow = () => {
   win = new BrowserWindow({
     width: 420,
     height: 720,
-    resizable: false,
+    minWidth: 420,
+    maxWidth: 420,
+    minHeight: 560,
     title: "Beatsync Speaker",
     titleBarStyle: "hiddenInset",
     backgroundColor: "#0a0a0a",

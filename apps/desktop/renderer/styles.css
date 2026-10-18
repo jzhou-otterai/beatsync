@@ -30,9 +30,12 @@ body {
 }
 .drag {
   -webkit-app-region: drag;
-  height: 28px;
+  height: 32px;
   position: fixed;
   inset: 0 0 auto 0;
+  z-index: 10;
+  /* Opaque so content scrolls under the title bar instead of behind the traffic lights */
+  background: var(--bg);
 }
 main {
   padding: 40px 24px 24px;
