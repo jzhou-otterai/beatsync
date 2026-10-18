@@ -10,7 +10,8 @@
 //       Stream PCM. --route makes Beatsync the Mac's output while capturing and restores
 //       the previous output on exit. --monitor also plays the audio on the Mac's real
 //       output (the one Beatsync replaced), held back by N ms so it lands in sync with
-//       the room's speakers.
+//       the room's speakers. The Beatsync device's volume/mute controls (the Mac's
+//       volume keys) scale only this local copy, never what the room hears.
 //
 // stderr carries newline-delimited JSON events for the parent process:
 //   {"event":"probe","installed":true,"microphone":"granted"}
@@ -159,6 +160,15 @@ final class DelayLine {
     private var fillEma: Double = 0
     private let lock = NSLock()
     let targetFrames: Int
+    /// Local volume (the Beatsync device's volume/mute controls). Only this copy is
+    /// scaled; the room always gets full-level audio.
+    private var targetGain: Float = 1
+    private var currentGain: Float = 1
+
+    func setGain(_ gain: Float) {
+        lock.lock(); defer { lock.unlock() }
+        targetGain = gain
+    }
     private let tolerance: Double
 
     init(targetFrames: Int, sampleRate: Double) {
@@ -211,7 +221,9 @@ final class DelayLine {
                 continue
             }
             let pos = readFrame % capacity
-            out(i, ring[pos * 2], ring[pos * 2 + 1])
+            // Glide toward the new volume over a few ms so slider moves don't click
+            currentGain += (targetGain - currentGain) * 0.005
+            out(i, ring[pos * 2] * currentGain, ring[pos * 2 + 1] * currentGain)
             if !(repeatFirst && i == 0) { readFrame += 1 }
         }
     }
@@ -329,6 +341,26 @@ status = AudioDeviceStart(deviceID, procID)
 guard status == noErr else {
     restoreOutput()
     fail("io-failed", "Couldn't start reading the Beatsync device", status)
+}
+
+// The Mac's volume keys / Sound menu act on the Beatsync device (it's the default
+// output). Mirror those controls onto the local copy only.
+func localGain() -> Float {
+    var scalar: Float32 = 1
+    var muted: UInt32 = 0
+    _ = getProperty(deviceID, kAudioDevicePropertyVolumeScalar, &scalar, scope: kAudioObjectPropertyScopeOutput)
+    _ = getProperty(deviceID, kAudioDevicePropertyMute, &muted, scope: kAudioObjectPropertyScopeOutput)
+    return muted != 0 ? 0 : scalar * scalar // same curve as the driver's dB mapping
+}
+
+if let delayLine {
+    delayLine.setGain(localGain())
+    for selector in [kAudioDevicePropertyVolumeScalar, kAudioDevicePropertyMute] {
+        var controlAddress = address(selector, kAudioObjectPropertyScopeOutput)
+        AudioObjectAddPropertyListenerBlock(deviceID, &controlAddress, DispatchQueue.main) { _, _ in
+            delayLine.setGain(localGain())
+        }
+    }
 }
 
 // Play the delayed copy on the Mac's real output

@@ -44,6 +44,11 @@ With **Switch this Mac's output to Beatsync while streaming** on (the default), 
 Beatsync the Mac's output and switches back to your previous output when you stop. With it off,
 choose Beatsync yourself, either system-wide in Sound settings or just in one app's output menu.
 
+**Volume.** The Beatsync device has its own volume and mute controls, so the Mac's volume keys
+and the Sound menu slider work while it's the output. They set how loud **this Mac** plays, and
+they don't change the room. Listeners always get full-level audio and set their own volume on their
+device or with the room's volume slider.
+
 Open the same room on your other devices and click **Start System**. Instead of the track
 player, they show a "Live from …" banner. On a home network, **Copy LAN join link** puts a link
 like `http://192.168.1.20:3000/room/123456` on the clipboard. It swaps `localhost` in the web app
@@ -87,7 +92,8 @@ apps ──► "Beatsync" output device (driver/BeatsyncDriver.c, runs in coreau
 ```
 
 - **`driver/BeatsyncDriver.c`**: an AudioServerPlugIn (Core Audio HAL plug-in) with one stereo
-  float32 device at 44.1 or 48 kHz. Its clock runs off the host clock. Output written by apps goes
+  float32 device at 44.1 or 48 kHz. It has master volume and mute controls, saved across restarts in
+  Core Audio's storage. They're *not* applied to the loopback. Its clock runs off the host clock. Output written by apps goes
   into a ring buffer by sample time and comes back out of the device's input stream. Reads past
   the last write return silence, so stale audio never replays. It never becomes the default input
   or the alert-sound device. `CFBundleVersion` in `driver/Info.plist` decides when the app
@@ -96,7 +102,8 @@ apps ──► "Beatsync" output device (driver/BeatsyncDriver.c, runs in coreau
   (`osascript … with administrator privileges`). The app never sees the password.
 - **`native/DeviceCapture.swift`**: finds the device by UID, checks Microphone permission up front,
   and streams the input as PCM. With `--route`, it makes Beatsync the default output and restores the
-  previous one on exit. `beatsync-audio-capture probe` reports install and permission state.
+  previous one on exit. With `--monitor`, it plays a delayed copy on the Mac's original output and
+  scales just that copy by the Beatsync device's volume/mute. `beatsync-audio-capture probe` reports install and permission state.
 - **`src/broadcaster.ts`**: the room client (WebSocket, NTP, `START_LIVE_STREAM`/`STOP_LIVE_STREAM`, liveness).
 - **`src/pcmChunker.ts`**: frames and timestamps. It re-anchors if the device clock drifts more than
   25 ms from the server clock, and after sleep/wake.
@@ -117,8 +124,6 @@ always works.
 
 ## Limitations
 
-- The Beatsync device has no volume control, so the Mac's volume keys don't affect it. Use the room's
-  volume slider instead.
 - Audio is uncompressed 16-bit PCM, about 1.5 Mbit/s per listener. That's fine on a LAN, but heavy
   over the internet. Opus via WebCodecs would cut it by about 10×.
 - The macOS menu bar shows the orange microphone indicator while streaming, because the app reads
