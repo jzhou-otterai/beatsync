@@ -8,9 +8,13 @@ import { AudioCapture, probeDevice } from "./audioCapture";
 import { Broadcaster, initialBroadcasterStatus, type BroadcasterStatus } from "./broadcaster";
 import { driverNeedsInstall, installDriver } from "./driverInstall";
 import { findLanAddress, lanJoinUrl } from "./lanUrl";
+import { LocalServer } from "./localServer";
 import { MenuBar } from "./tray";
 
 export interface Settings {
+  /** Run the server and web app bundled with this app, instead of the wsUrl/webUrl below */
+  hostLocally: boolean;
+  /** An external Beatsync server, used when not hosting locally */
   wsUrl: string;
   webUrl: string;
   roomId: string;
@@ -27,6 +31,7 @@ const settingsPath = () => path.join(app.getPath("userData"), "settings.json");
 
 const loadSettings = (): Settings => {
   const defaults: Settings = {
+    hostLocally: true,
     wsUrl: "ws://localhost:8080/ws",
     webUrl: "http://localhost:3000",
     roomId: "",
@@ -56,6 +61,29 @@ const driverPath = () =>
   app.isPackaged
     ? path.join(process.resourcesPath, "driver", "Beatsync.driver")
     : path.join(app.getAppPath(), "build", "Beatsync.driver");
+
+const serverPath = () =>
+  app.isPackaged
+    ? path.join(process.resourcesPath, "bin", "beatsync-server")
+    : path.join(app.getAppPath(), "bin", "beatsync-server");
+
+const webPath = () =>
+  app.isPackaged ? path.join(process.resourcesPath, "web") : path.join(app.getAppPath(), "build", "web");
+
+let localServer: LocalServer;
+
+/**
+ * Where the room lives: the server bundled with the app (started on first use, so nothing
+ * listens on the network until it's needed), or the external one set under Advanced
+ */
+const resolveUrls = async (s: Pick<Settings, "hostLocally" | "wsUrl" | "webUrl">) => {
+  if (!s.hostLocally) {
+    localServer.stop();
+    return { wsUrl: s.wsUrl, webUrl: s.webUrl };
+  }
+  const port = await localServer.ensureRunning();
+  return { wsUrl: `ws://127.0.0.1:${port}/ws`, webUrl: `http://127.0.0.1:${port}` };
+};
 
 /** Core Audio takes a moment to come back after a restart */
 const waitForDevice = async (timeoutMs = 10_000) => {
@@ -139,8 +167,22 @@ const start = async (next: Omit<Settings, "clientId">) => {
     return;
   }
 
+  let wsUrl: string;
+  try {
+    if (settings.hostLocally)
+      sendStatus({ ...idleStatus(), phase: "connecting", message: "Starting the room server…" });
+    const urls = await resolveUrls(settings);
+    wsUrl = urls.wsUrl;
+    if (settings.hostLocally) {
+      sendToAll("note", { hosting: lanJoinUrl(urls.webUrl, settings.roomId, findLanAddress(networkInterfaces())) });
+    }
+  } catch (error) {
+    sendStatus({ ...idleStatus(), phase: "error", message: (error as Error).message });
+    return;
+  }
+
   const b = new Broadcaster({
-    wsUrl: settings.wsUrl,
+    wsUrl,
     roomId: settings.roomId,
     username: settings.username,
     clientId: settings.clientId,
@@ -223,6 +265,12 @@ const createWindow = () => {
 
 app.whenReady().then(() => {
   settings = loadSettings();
+  localServer = new LocalServer({
+    binPath: serverPath(),
+    webDir: webPath(),
+    dataDir: path.join(app.getPath("userData"), "server"),
+    logDir: app.getPath("logs"),
+  });
   saveSettings(settings); // persist the generated clientId
 
   ipcMain.handle("get-initial-state", () => {
@@ -260,15 +308,31 @@ app.whenReady().then(() => {
   ipcMain.handle("open-sound-settings", () =>
     shell.openExternal("x-apple.systempreferences:com.apple.Sound-Settings.extension")
   );
-  ipcMain.handle("copy-lan-link", (_event, form: { webUrl: string; roomId: string }) => {
-    if (!/^\d{6}$/.test(form.roomId)) return { ok: false, message: "Enter a 6-digit room code first" };
-    const url = lanJoinUrl(form.webUrl, form.roomId, findLanAddress(networkInterfaces()));
-    if (!url) return { ok: false, message: "Couldn't find this Mac's local network address — is Wi-Fi connected?" };
-    clipboard.writeText(url);
-    return { ok: true, url };
-  });
-  ipcMain.handle("open-room", () => {
-    if (settings.roomId) shell.openExternal(`${settings.webUrl.replace(/\/$/, "")}/room/${settings.roomId}`);
+  ipcMain.handle(
+    "copy-lan-link",
+    async (_event, form: Pick<Settings, "hostLocally" | "wsUrl" | "webUrl" | "roomId">) => {
+      if (!/^\d{6}$/.test(form.roomId)) return { ok: false, message: "Enter a 6-digit room code first" };
+      let webUrl: string;
+      try {
+        // Hosting locally: start the server now, so phones can join before streaming starts
+        ({ webUrl } = await resolveUrls(form));
+      } catch (error) {
+        return { ok: false, message: (error as Error).message };
+      }
+      const url = lanJoinUrl(webUrl, form.roomId, findLanAddress(networkInterfaces()));
+      if (!url) return { ok: false, message: "Couldn't find this Mac's local network address — is Wi-Fi connected?" };
+      clipboard.writeText(url);
+      return { ok: true, url };
+    }
+  );
+  ipcMain.handle("open-room", async () => {
+    if (!settings.roomId) return;
+    try {
+      const { webUrl } = await resolveUrls(settings);
+      await shell.openExternal(`${webUrl.replace(/\/$/, "")}/room/${settings.roomId}`);
+    } catch (error) {
+      sendStatus({ ...(broadcaster?.getStatus() ?? idleStatus()), phase: "error", message: (error as Error).message });
+    }
   });
 
   // Packaged builds get the icon from icon.icns; in development, show it in the Dock too
@@ -281,5 +345,9 @@ app.whenReady().then(() => {
 // Closing the window keeps streaming from the menu bar; quit from the menu bar icon
 app.on("window-all-closed", () => {});
 
-// Make sure the helper stops (and switches the Mac back to its previous output) on quit
-app.on("before-quit", stopAll);
+// Make sure the helper stops (and switches the Mac back to its previous output) on quit,
+// and the room server with it
+app.on("before-quit", () => {
+  stopAll();
+  localServer?.stop();
+});

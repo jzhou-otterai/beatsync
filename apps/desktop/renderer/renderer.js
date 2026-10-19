@@ -20,6 +20,7 @@ const readForm = () => ({
   routeOutput: $("routeOutput").checked,
   playOnMac: $("playOnMac").checked,
   latencyMs: Number($("latencyMs").value),
+  hostLocally: $("hostLocally").checked,
   wsUrl: $("wsUrl").value.trim(),
   webUrl: $("webUrl").value.trim(),
 });
@@ -30,10 +31,22 @@ const fillForm = (s) => {
   $("routeOutput").checked = s.routeOutput;
   $("playOnMac").checked = s.playOnMac;
   $("latencyMs").value = String(s.latencyMs);
+  $("hostLocally").checked = s.hostLocally;
   $("wsUrl").value = s.wsUrl;
   $("webUrl").value = s.webUrl;
   updateLatency();
+  updateExternal();
 };
+
+// The external server fields only matter when not hosting the room here
+const updateExternal = () => {
+  const external = !$("hostLocally").checked;
+  for (const id of ["wsUrl", "webUrl"]) {
+    $(id).disabled = running || !external;
+    $(id).required = external;
+  }
+};
+$("hostLocally").addEventListener("change", updateExternal);
 
 const updateLatency = () => {
   $("latencyOut").textContent = `${$("latencyMs").value} ms`;
@@ -44,8 +57,9 @@ const setRunning = (value) => {
   const btn = $("toggle");
   btn.textContent = running ? "Stop streaming" : "Start streaming";
   btn.classList.toggle("stop", running);
-  for (const id of ["roomId", "username", "routeOutput", "playOnMac", "latencyMs", "wsUrl", "webUrl"])
+  for (const id of ["roomId", "username", "routeOutput", "playOnMac", "latencyMs", "hostLocally"])
     $(id).disabled = running;
+  updateExternal();
   $("toggle").disabled = !running && !deviceReady;
 };
 
@@ -72,7 +86,7 @@ const renderStatus = (status) => {
 
   if (status.phase === "idle") {
     setRunning(false);
-    Object.assign(notes, { routedFrom: null, monitoring: null, warning: null });
+    Object.assign(notes, { hosting: null, routedFrom: null, monitoring: null, warning: null });
     $("notes").textContent = "";
   } else if (!running) {
     // Started from the menu bar
@@ -118,10 +132,11 @@ $("recheckDevice").addEventListener("click", checkDevice);
 api.onDevice(renderDevice);
 $("openSound").addEventListener("click", () => api.openSoundSettings());
 // What the helper did with the Mac's own audio while starting
-const notes = { routedFrom: null, monitoring: null, warning: null };
+const notes = { hosting: null, routedFrom: null, monitoring: null, warning: null };
 api.onNote((note) => {
   Object.assign(notes, note);
   const parts = [];
+  if (notes.hosting) parts.push(`Hosting the room on this Mac: ${notes.hosting}`);
   if (notes.routedFrom)
     parts.push(`Mac output switched to Beatsync (was ${notes.routedFrom}); it switches back when you stop.`);
   if (notes.monitoring)
@@ -147,8 +162,8 @@ $("openRoom").addEventListener("click", () => api.openRoom());
 
 let lanResultTimer;
 $("copyLan").addEventListener("click", async () => {
-  const { roomId, webUrl } = readForm();
-  const result = await api.copyLanLink({ roomId, webUrl });
+  const { roomId, hostLocally, wsUrl, webUrl } = readForm();
+  const result = await api.copyLanLink({ roomId, hostLocally, wsUrl, webUrl });
   const el = $("lanResult");
   el.textContent = result.ok ? `Copied ${result.url}` : result.message;
   el.classList.toggle("error", !result.ok);

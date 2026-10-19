@@ -64,11 +64,21 @@
             <input id="latencyMs" type="range" min="100" max="2000" step="50" />
             <small>Lower is snappier; raise it if devices stutter on a busy network</small>
           </label>
-          <label>
+          <label class="toggle">
+            <input id="hostLocally" type="checkbox" />
+            <span>
+              Host the room on this Mac
+              <small
+                >Runs the Beatsync server and web app built into this app. Phones on the same Wi-Fi join with the LAN
+                link. Turn off to use the external server below.</small
+              >
+            </span>
+          </label>
+          <label class="external">
             <span>Server WebSocket URL</span>
             <input id="wsUrl" type="url" required />
           </label>
-          <label>
+          <label class="external">
             <span>Web app URL</span>
             <input id="webUrl" type="url" required />
           </label>

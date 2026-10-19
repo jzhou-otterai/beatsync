@@ -7,7 +7,8 @@
   "main": "dist/main.js",
   "scripts": {
     "build:native": "bash scripts/build-native.sh",
-    "build:app": "bun run build:native && bun run bundle",
+    "build:server": "bash scripts/build-server.sh",
+    "build:app": "bun run build:native && bun run build:server && bun run bundle",
     "bundle": "bun build src/main.ts src/preload.ts --target=node --format=cjs --outdir=dist --external electron --sourcemap",
     "app": "bun run build:app && bash scripts/ensure-electron.sh && electron .",
     "dist": "bun run build:app && bash scripts/ensure-electron.sh && bash scripts/dist.sh",
@@ -41,6 +42,14 @@
       {
         "from": "build/Beatsync.driver",
         "to": "driver/Beatsync.driver"
+      },
+      {
+        "from": "bin/beatsync-server",
+        "to": "bin/beatsync-server"
+      },
+      {
+        "from": "build/web",
+        "to": "web"
       }
     ],
     "mac": {

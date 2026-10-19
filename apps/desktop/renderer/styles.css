@@ -282,3 +282,7 @@ button:disabled {
 .room-volume input:disabled {
   opacity: 0.4;
 }
+/* External server fields, unused while hosting the room on this Mac */
+label.external:has(input:disabled) {
+  opacity: 0.45;
+}

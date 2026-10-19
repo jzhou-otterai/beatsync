@@ -14,3 +14,6 @@ export const createUserId = () => {
     return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
   }
 };
+
+/** Room ID of the one room page a static export prerenders (see app/room/[roomId]/page.tsx) */
+export const STATIC_ROOM_PLACEHOLDER = "_";

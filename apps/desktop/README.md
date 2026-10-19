@@ -13,18 +13,37 @@ receivers schedule it the same way they schedule synchronized play/pause.
 ## Requirements
 
 - macOS 13 or later
-- A Beatsync server built from this repo. The live-stream messages are new, so a stock server
-  (including beatsync.gg) won't relay them.
-- Xcode command line tools, to build the driver and capture helper
+- Nothing else to use it: the app hosts the room itself (see [Hosting the room](#hosting-the-room)).
+  To use an external server instead, it has to be built from this repo. The live-stream messages
+  are new, so a stock server (including beatsync.gg) won't relay them.
+- To build it: Bun and the Xcode command line tools (for the driver and capture helper)
 
-## Run it
+## Hosting the room
+
+The app has the Beatsync server and web app built in. With **Advanced → Host the room on this
+Mac** on (the default), starting a stream (or clicking **Copy LAN join link**) starts that server
+on port 8090, or on a free port if 8090 is taken. It serves the web app and the room's API and
+WebSocket from that one port on every network interface. Phones on the same Wi-Fi only need the
+LAN join link, e.g. `http://192.168.1.20:8090/room/123456`. No repo, no `bun dev`. The first time
+a phone connects, macOS may ask whether Beatsync Speaker can accept incoming connections. Allow
+it. The server stops when you quit the app.
+
+The hosted server keeps rooms in memory and has no storage bucket, so uploading tracks doesn't
+work in a hosted room. The live stream from the Mac does. Its log is at
+`~/Library/Logs/Beatsync Speaker/server.log`.
+
+Turn the option off to use an external server instead: the **Server WebSocket URL** and **Web
+app URL** fields below it then apply, e.g. for `bun dev` while working on the server.
+
+## Run it from source
 
 ```bash
 bun install                 # from the repo root
-bun dev                     # server on :8080, web client on :3000
-bun run desktop             # builds the driver + helper and launches the app
+bun run desktop             # builds the driver, helper, server and web app, then launches the app
 ```
 
+That's enough on its own, because the app hosts the room. To develop against `bun dev` instead
+(server on :8080, web client on :3000), turn off **Advanced → Host the room on this Mac**.
 If port 8080 is already taken (`bun dev` prints `EADDRINUSE`), run the server on another port.
 Put `PORT=8090` in `apps/server/.env`, point the web client at it in `apps/client/.env.local`
 (`NEXT_PUBLIC_API_URL=http://localhost:8090`, `NEXT_PUBLIC_WS_URL=ws://localhost:8090/ws`), and set
@@ -57,11 +76,10 @@ Changing it needs playback control in the room (admin, or a room open to everyon
 volume keys then work on top of it, for the Mac only.
 
 Open the same room on your other devices and click **Start System**. Instead of the track
-player, they show a "Live from …" banner. On a home network, **Copy LAN join link** puts a link
-like `http://192.168.1.20:3000/room/123456` on the clipboard. It swaps `localhost` in the web app
-URL for the Mac's Wi-Fi address. With the dev setup, the web client does the same for its server
-URL, so phones reach the server on the Mac too. The first time another device connects, macOS may
-ask whether `bun`/`node` can accept incoming connections.
+player, they show a "Live from …" banner. **Copy LAN join link** puts a link to the room on the
+clipboard, with the Mac's Wi-Fi address in place of `localhost`. When hosting the room, the status
+area shows that link too. With an external dev setup (`http://localhost:3000`), the web client
+also swaps `localhost` in its server URL, so phones reach the server on the Mac.
 
 To remove the device:
 
@@ -80,7 +98,7 @@ cd apps/desktop && bun run dist      # → release/Beatsync Speaker-<version>-un
 ```
 
 Open the DMG and drag **Beatsync Speaker** into Applications. That's the whole install: the
-capture helper and the Beatsync audio driver ship inside the app, and the driver installs
+capture helper, the Beatsync audio driver, and the room server and web app ship inside the app, and the driver installs
 itself the first time you start streaming. The DMG is universal (Apple Silicon and Intel).
 
 **Signing.** Without an Apple Developer ID, the build is ad-hoc signed. It runs fine on the Mac
@@ -121,7 +139,7 @@ apps ──► "Beatsync" output device (driver/BeatsyncDriver.c, runs in coreau
 
 - **`driver/BeatsyncDriver.c`**: an AudioServerPlugIn (Core Audio HAL plug-in) with one stereo
   float32 device at 44.1 or 48 kHz. It has master volume and mute controls, saved across restarts in
-  Core Audio's storage. They're *not* applied to the loopback. Its clock runs off the host clock. Output written by apps goes
+  Core Audio's storage. They're _not_ applied to the loopback. Its clock runs off the host clock. Output written by apps goes
   into a ring buffer by sample time and comes back out of the device's input stream. Reads past
   the last write return silence, so stale audio never replays. It never becomes the default input
   or the alert-sound device. `CFBundleVersion` in `driver/Info.plist` decides when the app
@@ -136,15 +154,25 @@ apps ──► "Beatsync" output device (driver/BeatsyncDriver.c, runs in coreau
 - **`src/pcmChunker.ts`**: frames and timestamps. It re-anchors if the device clock drifts more than
   25 ms from the server clock, and after sleep/wake.
 - **`packages/shared/liveStream.ts`**: the binary frame format shared by all three apps.
+- **`scripts/build-server.sh`**: builds the hosted room. `apps/server` is compiled with
+  `bun build --compile` for arm64 and x64 and merged with `lipo` into `bin/beatsync-server`.
+  `apps/client` is built as a static export (`BEATSYNC_STATIC_EXPORT=1`) into `build/web`. The export
+  has one prerendered room page; the server (`apps/server/src/routes/static.ts`, on when
+  `STATIC_DIR` is set) serves it for every `/room/<id>`, and the page reads the room code from the
+  URL. With no API URL baked in, the web app talks to whatever origin served it.
+- **`src/localServer.ts`**: picks the port, runs `beatsync-server` with a clean environment (no S3
+  keys, so state backups are off), and waits for `/health`. The server exits when its stdin
+  closes, so it doesn't outlive the app even after a crash.
 
 ## Settings
 
-| Setting | Default | Notes |
-| --- | --- | --- |
-| Switch this Mac's output to Beatsync while streaming | on | Off: pick Beatsync yourself, system-wide or per app |
-| Buffer | 400 ms | Delay between playing on the Mac and hearing it in the room. Raise it if devices stutter on a busy network |
-| Server WebSocket URL | `ws://localhost:8080/ws` | Your self-hosted server |
-| Web app URL | `http://localhost:3000` | Used by "Open room in browser" and the LAN link |
+| Setting                                              | Default                  | Notes                                                                                                      |
+| ---------------------------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| Switch this Mac's output to Beatsync while streaming | on                       | Off: pick Beatsync yourself, system-wide or per app                                                        |
+| Buffer                                               | 400 ms                   | Delay between playing on the Mac and hearing it in the room. Raise it if devices stutter on a busy network |
+| Host the room on this Mac                            | on                       | Runs the bundled server and web app (port 8090, or a free one)                                             |
+| Server WebSocket URL                                 | `ws://localhost:8080/ws` | External server, when not hosting the room                                                                 |
+| Web app URL                                          | `http://localhost:3000`  | External web app, used by "Open room in browser" and the LAN link when not hosting                         |
 
 Only someone who can control playback can start a live stream: an admin, or anyone if the room
 allows everyone. The first client in a room is admin, so starting the Mac first in an empty room
