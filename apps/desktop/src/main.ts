@@ -148,15 +148,12 @@ const start = async (next: Omit<Settings, "clientId">) => {
     username: settings.username,
     clientId: settings.clientId,
     onStatus: sendStatus,
-    // The room volume also sets how loud this Mac plays its local copy
-    onGlobalVolume: (volume) => capture?.setRoomVolume(volume),
   });
   broadcaster = b;
   b.connect();
 
   const c = new AudioCapture(helperPath());
   capture = c;
-  c.setRoomVolume(b.getStatus().globalVolume);
   c.start(
     {
       routeOutput: settings.routeOutput,

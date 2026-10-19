@@ -33,7 +33,7 @@ const render = (status) => {
   $("volumeHelp").textContent =
     connected && !status.canControl
       ? "Only the room admin can change this"
-      : "Every device in the room, this Mac included";
+      : "Every other device in the room (not this Mac)";
 
   const running = status.phase !== "idle";
   const toggle = $("toggle");

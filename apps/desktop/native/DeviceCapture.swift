@@ -14,7 +14,6 @@
 //       volume keys) scale only this local copy, never what the room hears.
 //
 // stdin takes commands, one per line:
-//   room-volume 0.5          the room-wide volume (0-1), which the local copy also follows
 //   monitor-offset-ms -20    shift the local copy later (+) or earlier (-) to line it up
 //                            with the room by ear; applies immediately
 //
@@ -438,9 +437,8 @@ func beatsyncMuted() -> Bool {
     return muted != 0
 }
 
-// Room-wide volume from the app (stdin); listeners apply it too, so the Mac follows it
-var roomVolume: Float = 1
-
+// Only the Mac's own volume keys/mute act on the local copy. The room-wide volume is for
+// the other devices, so 100% here always means the speakers' own maximum.
 func updateLocalGain() {
     guard let delayLine else { return }
     let volume = beatsyncVolume()
@@ -449,10 +447,10 @@ func updateLocalGain() {
         for element in speakerVolumeElements {
             _ = setProperty(monitorDevice, kAudioDevicePropertyVolumeScalar, volume, scope: kAudioObjectPropertyScopeOutput, element: element)
         }
-        delayLine.setGain(beatsyncMuted() ? 0 : roomVolume)
+        delayLine.setGain(beatsyncMuted() ? 0 : 1)
     } else {
         // Speakers without a settable volume: scale in software (driver's dB curve)
-        delayLine.setGain(beatsyncMuted() ? 0 : volume * volume * roomVolume)
+        delayLine.setGain(beatsyncMuted() ? 0 : volume * volume)
     }
 }
 
@@ -535,12 +533,7 @@ for sig in [SIGTERM, SIGINT] {
 DispatchQueue.global().async {
     while let line = readLine() {
         let parts = line.split(separator: " ")
-        if parts.count == 2, parts[0] == "room-volume", let value = Float(parts[1]) {
-            DispatchQueue.main.async {
-                roomVolume = max(0, min(1, value))
-                updateLocalGain()
-            }
-        } else if parts.count == 2, parts[0] == "monitor-offset-ms", let value = Double(parts[1]) {
+        if parts.count == 2, parts[0] == "monitor-offset-ms", let value = Double(parts[1]) {
             delayLine?.setOffset(ms: value)
         }
     }

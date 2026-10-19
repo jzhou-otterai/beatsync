@@ -57,10 +57,10 @@ their own latency, so exact sync needs your ear. Use the **Mac timing** slider u
 this Mac" (±250 ms, applies live): slide right if the Mac sounds ahead of the phones, left if it's
 behind. It's saved between sessions. Per-phone fine-tuning lives in the web app's nudge control.
 
-**Room volume.** The slider under the stream status sets the volume on every device in the room,
-this Mac included. It's the same room-wide volume as the web app's slider, so the two stay in sync.
-Changing it needs playback control in the room (admin, or a room open to everyone). The Mac's own
-volume keys then work on top of it, for the Mac only.
+**Room volume.** The slider under the stream status sets the volume on every *other* device in
+the room. It doesn't affect this Mac, which follows only its own volume keys, so 100% on Beatsync is
+always your speakers' maximum. It's the same room-wide volume as the web app's slider, so the two stay in sync.
+Changing it needs playback control in the room (admin, or a room open to everyone).
 
 Open the same room on your other devices and click **Start System**. Instead of the track
 player, they show a "Live from …" banner. On a home network, **Copy LAN join link** puts a link

@@ -172,7 +172,7 @@ const renderRoomVolume = (status) => {
   $("roomVolumeHelp").textContent =
     connected && !status.canControl
       ? "Only the room admin can change this (or make playback controls open to everyone)"
-      : "Sets the volume on every device in the room, this Mac included";
+      : "Sets the volume on every other device in the room. This Mac follows its own volume keys";
 };
 
 roomVolume.addEventListener("input", () => {
