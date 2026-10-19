@@ -14,7 +14,9 @@
 //       volume keys) scale only this local copy, never what the room hears.
 //
 // stdin takes commands, one per line:
-//   room-volume 0.5   the room-wide volume (0-1), which the local copy also follows
+//   room-volume 0.5          the room-wide volume (0-1), which the local copy also follows
+//   monitor-offset-ms -20    shift the local copy later (+) or earlier (-) to line it up
+//                            with the room by ear; applies immediately
 //
 // stderr carries newline-delimited JSON events for the parent process:
 //   {"event":"probe","installed":true,"microphone":"granted"}
@@ -104,6 +106,10 @@ if command == "probe" {
 guard command == "capture" else { fail("usage", "Unknown command \(command)") }
 let route = args.contains("--route")
 let monitor = args.contains("--monitor")
+let monitorOffsetMs: Double = {
+    guard let i = args.firstIndex(of: "--offset-ms"), args.index(after: i) < args.endIndex else { return 0 }
+    return Double(args[args.index(after: i)]) ?? 0
+}()
 let monitorDelayMs: Double = {
     guard let i = args.firstIndex(of: "--delay-ms"), args.index(after: i) < args.endIndex else { return 400 }
     return Double(args[args.index(after: i)]) ?? 400
@@ -162,7 +168,11 @@ final class DelayLine {
     private var started = false
     private var fillEma: Double = 0
     private let lock = NSLock()
-    let targetFrames: Int
+    /// Delay computed from the buffer and the speakers' reported latency
+    let baseFrames: Int
+    /// Current delay: `baseFrames` plus the user's timing offset
+    private(set) var targetFrames: Int
+    private let sampleRate: Double
     /// Local volume (the Beatsync device's volume/mute controls). Only this copy is
     /// scaled; the room always gets full-level audio.
     private var targetGain: Float = 1
@@ -174,9 +184,46 @@ final class DelayLine {
     }
     private let tolerance: Double
 
+    // Diagnostics (BEATSYNC_DEBUG=1): what actually reached the speakers since the last report
+    private var underruns = 0
+    private var peakOut: Float = 0
+    private var framesOut = 0
+
+    /// Shift playback later (+) or earlier (-) relative to the base delay. Moves the read
+    /// position right away instead of waiting for drift correction to get there.
+    func setOffset(ms: Double) {
+        lock.lock(); defer { lock.unlock() }
+        let clamped = max(-DelayLine.maxOffsetMs, min(DelayLine.maxOffsetMs, ms))
+        let newTarget = max(0, baseFrames + Int(clamped / 1000 * sampleRate))
+        let delta = newTarget - targetFrames
+        targetFrames = newTarget
+        guard started else { return } // not playing yet: it'll fill to the new target
+        // Later = read older audio; keep within what the ring still holds
+        readFrame = min(writeFrame, max(writeFrame - capacity + 1, readFrame - delta))
+        fillEma = Double(writeFrame - readFrame)
+    }
+
+    /// Snapshot and reset the diagnostic counters
+    func takeStats() -> [String: Any] {
+        lock.lock(); defer { lock.unlock() }
+        let stats: [String: Any] = [
+            "event": "monitor-stats", "fillFrames": writeFrame - readFrame, "targetFrames": targetFrames, "baseFrames": baseFrames,
+            "started": started, "underruns": underruns, "framesOut": framesOut,
+            "peakOut": Double(peakOut), "gain": Double(currentGain), "targetGain": Double(targetGain),
+        ]
+        underruns = 0; peakOut = 0; framesOut = 0
+        return stats
+    }
+
+    /// Room for timing offsets in either direction, beyond the base delay
+    static let maxOffsetMs = 500.0
+
     init(targetFrames: Int, sampleRate: Double) {
+        baseFrames = targetFrames
         self.targetFrames = targetFrames
-        capacity = targetFrames + Int(sampleRate) // a second of headroom
+        self.sampleRate = sampleRate
+        // A second of headroom plus the largest later-shift the timing offset allows
+        capacity = targetFrames + Int(sampleRate * (1 + DelayLine.maxOffsetMs / 1000))
         ring = [Float](repeating: 0, count: capacity * 2)
         tolerance = sampleRate * 0.005 // ±5ms
     }
@@ -219,6 +266,7 @@ final class DelayLine {
         for i in 0..<frames {
             guard readFrame < writeFrame else {
                 // Underrun: go quiet and rebuild the full delay before playing again
+                if started { underruns += 1 }
                 started = false
                 out(i, 0, 0)
                 continue
@@ -226,7 +274,10 @@ final class DelayLine {
             let pos = readFrame % capacity
             // Glide toward the new volume over a few ms so slider moves don't click
             currentGain += (targetGain - currentGain) * 0.005
-            out(i, ring[pos * 2] * currentGain, ring[pos * 2 + 1] * currentGain)
+            let l = ring[pos * 2] * currentGain, r = ring[pos * 2 + 1] * currentGain
+            peakOut = max(peakOut, abs(l), abs(r))
+            framesOut += 1
+            out(i, l, r)
             if !(repeatFirst && i == 0) { readFrame += 1 }
         }
     }
@@ -267,6 +318,7 @@ if let monitorDevice {
         if deviceSampleRate(deviceID) == speakerRate {
             let targetMs = monitorDelayMs - Double(outputLatencyFrames(monitorDevice)) / speakerRate * 1000
             delayLine = DelayLine(targetFrames: max(0, Int(targetMs / 1000 * speakerRate)), sampleRate: speakerRate)
+            delayLine?.setOffset(ms: monitorOffsetMs)
         }
     }
     if delayLine == nil {
@@ -448,6 +500,16 @@ if let monitorDevice, let delayLine {
     }
 }
 
+// BEATSYNC_DEBUG=1: report every 2s what the local copy is doing (stderr JSON)
+var statsTimer: DispatchSourceTimer?
+if ProcessInfo.processInfo.environment["BEATSYNC_DEBUG"] == "1", let delayLine {
+    let timer = DispatchSource.makeTimerSource(queue: .main)
+    timer.schedule(deadline: .now() + 2, repeating: 2)
+    timer.setEventHandler { emit(delayLine.takeStats()) }
+    timer.resume()
+    statsTimer = timer
+}
+
 func stopMonitor() {
     guard let monitorDevice, let monitorProcID else { return }
     AudioDeviceStop(monitorDevice, monitorProcID)
@@ -478,6 +540,8 @@ DispatchQueue.global().async {
                 roomVolume = max(0, min(1, value))
                 updateLocalGain()
             }
+        } else if parts.count == 2, parts[0] == "monitor-offset-ms", let value = Double(parts[1]) {
+            delayLine?.setOffset(ms: value)
         }
     }
     DispatchQueue.main.async {

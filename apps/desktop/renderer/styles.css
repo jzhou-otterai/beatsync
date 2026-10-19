@@ -282,3 +282,15 @@ button:disabled {
 .room-volume input:disabled {
   opacity: 0.4;
 }
+.mac-timing {
+  gap: 4px;
+  padding-left: 23px;
+}
+.mac-timing input {
+  width: 100%;
+  accent-color: var(--accent);
+}
+.mac-timing output {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}

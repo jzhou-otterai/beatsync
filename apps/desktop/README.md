@@ -51,6 +51,12 @@ keys have the Mac's native range and curve. Streaming starts at the speakers' cu
 they keep your last setting when you stop. Listeners always get full-level audio and set their own volume on their
 device or with the room's volume slider.
 
+**Mac timing.** The Mac's copy is delayed by the buffer minus the speakers' reported output
+latency, so it lands with the room on paper. Phones, especially over Bluetooth, often misreport
+their own latency, so exact sync needs your ear. Use the **Mac timing** slider under "Also play on
+this Mac" (±250 ms, applies live): slide right if the Mac sounds ahead of the phones, left if it's
+behind. It's saved between sessions. Per-phone fine-tuning lives in the web app's nudge control.
+
 **Room volume.** The slider under the stream status sets the volume on every device in the room,
 this Mac included. It's the same room-wide volume as the web app's slider, so the two stay in sync.
 Changing it needs playback control in the room (admin, or a room open to everyone). The Mac's own

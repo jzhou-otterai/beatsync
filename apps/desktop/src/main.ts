@@ -20,6 +20,8 @@ export interface Settings {
   routeOutput: boolean;
   /** Keep playing on the Mac's own speakers too, delayed to match the room */
   playOnMac: boolean;
+  /** Fine-tunes the Mac's local copy against the room, in ms (+ = later) */
+  macOffsetMs: number;
   clientId: string;
 }
 
@@ -34,6 +36,7 @@ const loadSettings = (): Settings => {
     latencyMs: LIVE_STREAM_CONSTANTS.DEFAULT_LATENCY_MS,
     routeOutput: true,
     playOnMac: true,
+    macOffsetMs: 0,
     clientId: randomUUID(),
   };
   try {
@@ -155,7 +158,12 @@ const start = async (next: Omit<Settings, "clientId">) => {
   capture = c;
   c.setRoomVolume(b.getStatus().globalVolume);
   c.start(
-    { routeOutput: settings.routeOutput, playOnMac: settings.playOnMac, delayMs: settings.latencyMs },
+    {
+      routeOutput: settings.routeOutput,
+      playOnMac: settings.playOnMac,
+      delayMs: settings.latencyMs,
+      offsetMs: settings.macOffsetMs,
+    },
     {
       onFormat: (format) => {
         // A format change mid-stream (e.g. sample rate changed in Audio MIDI Setup) needs a fresh stream
@@ -247,6 +255,11 @@ app.whenReady().then(() => {
   ipcMain.handle("stop", () => {
     stopAll();
     sendStatus(idleStatus());
+  });
+  ipcMain.handle("set-mac-offset", (_event, ms: number) => {
+    settings.macOffsetMs = Math.max(-500, Math.min(500, Math.round(ms)));
+    saveSettings(settings);
+    capture?.setMonitorOffset(settings.macOffsetMs);
   });
   ipcMain.handle("set-room-volume", (_event, volume: number) => broadcaster?.setGlobalVolume(volume));
   ipcMain.handle("device-status", async () => ({

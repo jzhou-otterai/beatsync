@@ -29,6 +29,8 @@ const fillForm = (s) => {
   $("username").value = s.username;
   $("routeOutput").checked = s.routeOutput;
   $("playOnMac").checked = s.playOnMac;
+  $("macOffset").value = String(s.macOffsetMs ?? 0);
+  renderMacOffset();
   $("latencyMs").value = String(s.latencyMs);
   $("wsUrl").value = s.wsUrl;
   $("webUrl").value = s.webUrl;
@@ -186,6 +188,19 @@ roomVolume.addEventListener("input", () => {
 roomVolume.addEventListener("change", () => {
   draggingVolume = false;
   api.setRoomVolume(Number(roomVolume.value) / 100);
+});
+
+// Mac timing: live fine-tuning of the Mac's local copy against the room
+const renderMacOffset = () => {
+  const ms = Number($("macOffset").value);
+  $("macOffsetOut").textContent = ms === 0 ? "0 ms" : `${ms > 0 ? "+" : ""}${ms} ms (${ms > 0 ? "later" : "earlier"})`;
+};
+$("macOffset").addEventListener("input", () => {
+  renderMacOffset();
+  api.setMacOffset(Number($("macOffset").value));
+});
+$("playOnMac").addEventListener("change", () => {
+  $("macOffset").disabled = !$("playOnMac").checked;
 });
 
 api.onStatus(renderStatus);

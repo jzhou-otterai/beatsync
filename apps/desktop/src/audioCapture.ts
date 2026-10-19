@@ -58,11 +58,12 @@ export const probeDevice = (helperPath: string): Promise<DeviceStatus> =>
 export class AudioCapture {
   private proc: ChildProcessWithoutNullStreams | null = null;
   private roomVolume = 1;
+  private offsetMs = 0;
 
   constructor(private readonly helperPath: string) {}
 
   start(
-    options: { routeOutput: boolean; playOnMac: boolean; delayMs: number },
+    options: { routeOutput: boolean; playOnMac: boolean; delayMs: number; offsetMs: number },
     callbacks: AudioCaptureCallbacks
   ): void {
     if (this.proc) return;
@@ -70,7 +71,15 @@ export class AudioCapture {
     const args = [
       "capture",
       ...(options.routeOutput ? ["--route"] : []),
-      ...(options.playOnMac ? ["--monitor", "--delay-ms", String(Math.round(options.delayMs))] : []),
+      ...(options.playOnMac
+        ? [
+            "--monitor",
+            "--delay-ms",
+            String(Math.round(options.delayMs)),
+            "--offset-ms",
+            String(Math.round(options.offsetMs)),
+          ]
+        : []),
     ];
     const proc = spawn(this.helperPath, args, { stdio: ["pipe", "pipe", "pipe"] });
     this.proc = proc;
@@ -88,7 +97,9 @@ export class AudioCapture {
         console.log(`[audio-capture] ${line}`);
         return;
       }
-      if (event.event === "format" && event.sampleRate && event.channels) {
+      if (event.event === "monitor-stats") {
+        console.log(`[audio-capture] ${line}`);
+      } else if (event.event === "format" && event.sampleRate && event.channels) {
         callbacks.onFormat({ sampleRate: event.sampleRate, channels: event.channels });
       } else if (event.event === "monitoring") {
         callbacks.onMonitoring(event.device ?? "this Mac", event.delayMs ?? 0);
@@ -117,6 +128,12 @@ export class AudioCapture {
   setRoomVolume(volume: number): void {
     this.roomVolume = volume;
     if (this.proc?.stdin.writable) this.proc.stdin.write(`room-volume ${volume}\n`);
+  }
+
+  /** Shift the Mac's local copy later (+) or earlier (-) to line it up with the room by ear */
+  setMonitorOffset(ms: number): void {
+    this.offsetMs = ms;
+    if (this.proc?.stdin.writable) this.proc.stdin.write(`monitor-offset-ms ${Math.round(ms)}\n`);
   }
 
   stop(): void {
