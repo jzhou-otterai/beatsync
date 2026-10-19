@@ -1,6 +1,10 @@
 import type { NextConfig } from "next";
 
+// Static build the Beatsync Speaker desktop app serves from its bundled server (apps/desktop)
+const isStaticExport = process.env.BEATSYNC_STATIC_EXPORT === "1";
+
 const nextConfig: NextConfig = {
+  ...(isStaticExport && { output: "export", images: { unoptimized: true } }),
   reactCompiler: true,
   images: {
     remotePatterns: [
@@ -28,8 +32,8 @@ const nextConfig: NextConfig = {
   },
   // This is required to support PostHog trailing slash API requests
   skipTrailingSlashRedirect: true,
-  // 10.0.0.* lets phones on the local network load dev resources
-  allowedDevOrigins: ["local.beatsync.gg", "10.0.0.*"],
+  // Private network ranges let phones on the local network load dev resources
+  allowedDevOrigins: ["local.beatsync.gg", "10.*.*.*", "192.168.*.*", "172.*.*.*"],
 };
 
 export default nextConfig;

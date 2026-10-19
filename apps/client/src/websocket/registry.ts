@@ -1,4 +1,6 @@
 import { useChatStore } from "@/store/chat";
+import { playCalibrationChirp } from "@/lib/calibrationChirp";
+import { liveStreamPlayer } from "@/lib/liveStreamPlayer";
 import { useGlobalStore } from "@/store/global";
 import { getProbeStats, handleNTPResponse } from "@/utils/ntp";
 import { sendWSRequest } from "@/utils/ws";
@@ -25,6 +27,10 @@ const ROOM_EVENT_REGISTRY: {
   },
   LOAD_AUDIO_SOURCE: (event) => {
     useGlobalStore.getState().handleLoadAudioSource(event);
+  },
+  LIVE_STREAM_STATE: (event) => {
+    if (!event.liveStream) liveStreamPlayer.stop();
+    useGlobalStore.getState().setLiveStream(event.liveStream);
   },
 };
 
@@ -76,6 +82,19 @@ export const WS_RESPONSE_REGISTRY: WebsocketResponseRegistry = {
       useGlobalStore.getState().sendProbePair();
     },
     description: "Liveness probe; reply with LIVENESS_PONG so the server knows this tab is alive",
+  },
+
+  [ServerActionEnum.enum.CALIBRATION_CHIRP]: {
+    handle: ({ response }) => playCalibrationChirp(response.playAtServerTime),
+    description: "Play a timing chirp the live broadcaster measures with its microphone",
+  },
+
+  [ServerActionEnum.enum.CALIBRATION_RESULT]: {
+    handle: ({ response }) => {
+      console.log(`[Calibration] heard ${response.correctionMs.toFixed(0)}ms off; adjusting`);
+      useGlobalStore.getState().applyMeasuredDelayCorrection(response.correctionMs);
+    },
+    description: "How far off this device's chirp was heard; shifts its timing by that much",
   },
 
   [ServerActionEnum.enum.NTP_RESPONSE]: {

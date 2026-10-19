@@ -44,6 +44,17 @@ function createRoomWithClients(count: number): { room: RoomManager; sockets: Ser
 }
 
 describe("processNTPRequestFrom", () => {
+  // A live stream's broadcaster only resizes its buffer when the room announces a
+  // listener's compensation change, including back to 0 when Bluetooth is turned off
+  it("reports compensation changes, including back to zero, but not noise", () => {
+    const { room } = createRoomWithClients(1);
+
+    expect(room.processNTPRequestFrom({ clientId: "client-1", clientCompensationMs: 200 })).toBe(true);
+    expect(room.processNTPRequestFrom({ clientId: "client-1", clientCompensationMs: 203 })).toBe(false);
+    expect(room.processNTPRequestFrom({ clientId: "client-1", clientCompensationMs: 0 })).toBe(true);
+    expect(room.getClient("client-1")!.compensationMs).toBe(0);
+  });
+
   it("should update lastNtpResponse timestamp", () => {
     const { room } = createRoomWithClients(1);
     const before = Date.now();

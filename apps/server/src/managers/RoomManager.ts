@@ -12,6 +12,7 @@ import type {
   ChatMessageType,
   ClientDataType,
   DiscoveryRoomType,
+  LiveStreamInfoType,
   PauseActionType,
   PlayActionType,
   PlaybackControlsPermissionsEnum,
@@ -75,6 +76,9 @@ export const ServerBackupSchema = z.object({
 export type ServerBackupType = z.infer<typeof ServerBackupSchema>;
 
 // Default/initial playback state for rooms
+/** Compensation changes smaller than this are measurement noise, not worth a broadcast */
+const COMPENSATION_CHANGE_NOTIFY_MS = 10;
+
 const INITIAL_PLAYBACK_STATE: RoomPlaybackState = {
   type: "paused",
   audioSource: "",
@@ -120,6 +124,7 @@ export class RoomManager {
   private onBecameEmpty?: () => void;
   private playbackState: RoomPlaybackState = INITIAL_PLAYBACK_STATE;
   private playbackControlsPermissions: PlaybackControlsPermissionsType = "ADMIN_ONLY";
+  private liveStream: LiveStreamInfoType | null = null; // Active live audio broadcast (e.g. desktop system audio)
   private globalVolume = 1.0;
   private lowPassFreq: number = LOW_PASS_CONSTANTS.MAX_FREQ; // Default bypassed (full spectrum)
   private isMetronomeEnabled = false;
@@ -311,6 +316,42 @@ export class RoomManager {
 
   getPlaybackState(): RoomPlaybackState {
     return this.playbackState;
+  }
+
+  /** The open socket of a connected client */
+  getClientWs(clientId: string): ServerWebSocket<WSData> | undefined {
+    return this.wsConnections.get(clientId);
+  }
+
+  getLiveStream(): LiveStreamInfoType | null {
+    return this.liveStream;
+  }
+
+  setLiveStream(liveStream: LiveStreamInfoType | null): void {
+    this.liveStream = liveStream;
+  }
+
+  /** Whether binary audio frames from this client should be relayed to the room */
+  isLiveBroadcaster(clientId: string, streamId: number): boolean {
+    return this.liveStream?.broadcasterClientId === clientId && this.liveStream.streamId === streamId;
+  }
+
+  /**
+   * Pause file playback so it doesn't play over a live stream.
+   * Returns the PAUSE action to broadcast, or null if nothing was playing.
+   */
+  pauseFilePlaybackForLiveStream(): { action: PauseActionType; serverTimeToExecute: number } | null {
+    if (this.playbackState.type !== "playing") return null;
+
+    const serverTimeToExecute = this.getScheduledExecutionTime();
+    const elapsedMs = serverTimeToExecute - this.playbackState.serverTimeToExecute;
+    const action: PauseActionType = {
+      type: "PAUSE",
+      audioSource: this.playbackState.audioSource,
+      trackTimeSeconds: this.playbackState.trackPositionSeconds + Math.max(0, elapsedMs) / 1000,
+    };
+    this.updatePlaybackSchedulePause(action, serverTimeToExecute);
+    return { action, serverTimeToExecute };
   }
 
   /**
@@ -639,17 +680,19 @@ export class RoomManager {
   }
 
   /**
-   * Receive an NTP request from a client
+   * Receive an NTP request from a client. Returns whether the client's compensation
+   * changed enough for the room to hear about it (e.g. a Bluetooth delay turned on, which
+   * a live stream's broadcaster makes room for in its buffer).
    */
   processNTPRequestFrom(data: {
     clientId: string;
     clientRTT?: number;
     clientCompensationMs?: number;
     clientNudgeMs?: number;
-  }): void {
+  }): boolean {
     const { clientId, clientRTT, clientCompensationMs, clientNudgeMs } = data;
     const client = this.clientData.get(clientId);
-    if (!client) return;
+    if (!client) return false;
     client.lastNtpResponse = Date.now();
 
     // Log first NTP probe per client (confirms probes are flowing)
@@ -668,8 +711,11 @@ export class RoomManager {
           : clientRTT; // First measurement
     }
 
-    // Store client's total local compensation (outputLatency + nudge)
-    if (clientCompensationMs !== undefined && clientCompensationMs > 0) {
+    // Store client's total local compensation (outputLatency + nudge). 0 counts too, so
+    // turning a Bluetooth delay off lowers it again
+    let compensationChanged = false;
+    if (clientCompensationMs !== undefined && clientCompensationMs >= 0) {
+      compensationChanged = Math.abs(clientCompensationMs - client.compensationMs) >= COMPENSATION_CHANGE_NOTIFY_MS;
       client.compensationMs = clientCompensationMs;
     }
 
@@ -679,6 +725,7 @@ export class RoomManager {
     }
 
     this.clientData.set(clientId, client);
+    return compensationChanged;
   }
 
   /**

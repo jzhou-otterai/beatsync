@@ -1,28 +1,33 @@
 import { NewSyncer } from "@/components/NewSyncer";
+import { RoomFromUrl } from "@/components/room/RoomFromUrl";
+import { InvalidRoom } from "@/components/room/InvalidRoom";
 import { DEMO_ROOM_ID, IS_DEMO_MODE } from "@/lib/demo";
-import { validateFullRoomId } from "@/lib/room";
+import { STATIC_ROOM_PLACEHOLDER, validateFullRoomId } from "@/lib/room";
 import { redirect } from "next/navigation";
 
-// Force dynamic rendering and disable caching
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+/**
+ * A static export (served by the Beatsync Speaker desktop app) has no server to render
+ * each room, so it prerenders one placeholder page that every /room/<id> is served from
+ * and reads the real room ID from the URL in the browser. Regular builds render rooms
+ * on demand.
+ */
+export function generateStaticParams() {
+  return process.env.BEATSYNC_STATIC_EXPORT === "1" ? [{ roomId: STATIC_ROOM_PLACEHOLDER }] : [];
+}
 
 export default async function Page({ params }: { params: Promise<{ roomId: string }> }) {
   const { roomId } = await params;
+
+  if (roomId === STATIC_ROOM_PLACEHOLDER) {
+    return <RoomFromUrl />;
+  }
 
   if (IS_DEMO_MODE && roomId !== DEMO_ROOM_ID) {
     redirect("/");
   }
 
   if (!validateFullRoomId(roomId)) {
-    return (
-      <div className="flex flex-col items-center justify-center h-screen gap-2">
-        <div>
-          Invalid room ID: <span className="font-bold">{roomId}</span>.
-        </div>
-        <div className="text-sm text-gray-500">Please enter a valid 6-digit numeric code.</div>
-      </div>
-    );
+    return <InvalidRoom roomId={roomId} />;
   }
 
   return <NewSyncer roomId={roomId} />;

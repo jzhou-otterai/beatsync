@@ -11,6 +11,7 @@ https://github.com/user-attachments/assets/2aa385a7-2a07-4ab5-80b1-fda553efc57b
 - **Spatial audio:** Allows controlling device volumes through a virtual listening source for interesting sonic effects
 - **Polished interface**: Smooth loading states, status indicators, and all UI elements come built-in
 - **Self-hostable**: Run your own instance with a few commands
+- **Mac as a source**: The [desktop app](apps/desktop/README.md) adds a "Beatsync" audio output to your Mac and streams whatever plays to it to every device in a room
 
 
 > [!NOTE]
@@ -38,4 +39,5 @@ bun dev              # starts both client (:3000) and server (:8080)
 | ----------------- | -------------------------------------------------------------- |
 | `apps/server`     | Bun HTTP + WebSocket server                                    |
 | `apps/client`     | Next.js frontend with Tailwind & Shadcn/ui                     |
+| `apps/desktop`    | macOS app with a "Beatsync" virtual output device that streams into a room ([details](apps/desktop/README.md)) |
 | `packages/shared` | Type-safe schemas and functions shared between client & server |

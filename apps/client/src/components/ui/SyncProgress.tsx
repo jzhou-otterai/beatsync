@@ -1,6 +1,7 @@
 "use client";
 
 import { SOCIAL_LINKS } from "@/constants";
+import { AUTO_START } from "@/lib/autoStart";
 import { MAX_NTP_MEASUREMENTS, useGlobalStore } from "@/store/global";
 import { motion } from "motion/react";
 import { useEffect, useState } from "react";
@@ -84,6 +85,11 @@ export const SyncProgress = ({ isLoading = false, loadingMessage = "Loading..." 
     const timer = setTimeout(() => setShowComplete(true), 100);
     return () => clearTimeout(timer);
   }, [isSyncComplete]);
+
+  // Hosted on the LAN by the desktop app: start as soon as clocks are synced, no button
+  useEffect(() => {
+    if (AUTO_START && showComplete && !hasUserStartedSystem) setIsInitingSystem(false);
+  }, [showComplete, hasUserStartedSystem, setIsInitingSystem]);
 
   const probeStats = useGlobalStore((state) => state.probeStats);
 
@@ -269,7 +275,7 @@ export const SyncProgress = ({ isLoading = false, loadingMessage = "Loading..." 
   }
 
   if (showComplete) {
-    if (hasUserStartedSystem) {
+    if (hasUserStartedSystem || AUTO_START) {
       return null;
     }
 

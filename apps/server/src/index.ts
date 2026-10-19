@@ -6,6 +6,7 @@ import { handleServeAudio } from "@/routes/demoAudio";
 import { handleDiscover } from "@/routes/discover";
 import { handleHealth } from "@/routes/health";
 import { handleRoot } from "@/routes/root";
+import { handleStatic, IS_SERVING_CLIENT } from "@/routes/static";
 import { handleStats } from "@/routes/stats";
 import { handleGetPresignedURL, handleUploadComplete } from "@/routes/upload";
 import { handleWebSocketUpgrade } from "@/routes/websocket";
@@ -16,7 +17,7 @@ import type { WSData } from "@/utils/websocket";
 // Bun.serve with WebSocket support
 const server = Bun.serve<WSData>({
   hostname: "0.0.0.0",
-  port: 8080,
+  port: Number(process.env.PORT ?? 8080),
   async fetch(req, server) {
     const start = performance.now();
     const url = new URL(req.url);
@@ -35,7 +36,7 @@ const server = Bun.serve<WSData>({
       } else {
         switch (url.pathname) {
           case "/":
-            response = handleRoot(req);
+            response = handleStatic(req, url.pathname) ?? handleRoot(req);
             break;
 
           case "/ws":
@@ -78,7 +79,7 @@ const server = Bun.serve<WSData>({
             break;
 
           default:
-            response = errorResponse("Not found", 404);
+            response = handleStatic(req, url.pathname) ?? errorResponse("Not found", 404);
             break;
         }
       }
@@ -118,7 +119,14 @@ if (IS_DEMO_MODE) {
   console.log(`🔑 Admin secret: ${ADMIN_SECRET}`);
 }
 
-if (!IS_DEMO_MODE) {
+if (IS_SERVING_CLIENT) {
+  console.log(`Serving the web client from ${process.env.STATIC_DIR}`);
+}
+
+// Backups go to R2; without a bucket (e.g. a server run by the desktop app) there's nothing to back up to
+const BACKUPS_ENABLED = !IS_DEMO_MODE && !!process.env.S3_BUCKET_NAME;
+
+if (BACKUPS_ENABLED) {
   // Restore state from backup on startup
   BackupManager.restoreState().catch((error) => {
     console.error("Failed to restore state on startup:", error);
@@ -139,7 +147,7 @@ const shutdown = async () => {
   console.log("\n⚠️ Shutting down...");
 
   void server.stop(); // Stop accepting new connections
-  if (!IS_DEMO_MODE) {
+  if (BACKUPS_ENABLED) {
     await BackupManager.backupState(); // Save state
   }
 
@@ -149,6 +157,13 @@ const shutdown = async () => {
 // Handle shutdown signals
 process.on("SIGTERM", () => void shutdown());
 process.on("SIGINT", () => void shutdown());
+
+// A parent process that runs the server (the desktop app) holds its stdin open, so the
+// server goes away with it even if the parent crashes or is force-quit
+if (process.env.EXIT_WITH_STDIN === "1") {
+  process.stdin.on("end", () => void shutdown());
+  process.stdin.resume();
+}
 
 // Crash handlers — log the error before PM2 restarts the process
 process.on("uncaughtException", (error) => {

@@ -16,10 +16,12 @@ import {
 import { sendWSRequest } from "@/utils/ws";
 import {
   AudioSourceSchema,
+  CALIBRATION_CONSTANTS,
   AudioSourceType,
   ClientActionEnum,
   ClientDataType,
   GlobalVolumeConfigType,
+  LiveStreamInfoType,
   LowPassConfigType,
   MetronomeConfigType,
   GRID,
@@ -93,6 +95,9 @@ interface GlobalStateValues {
   hasUserStartedSystem: boolean; // Track if user has clicked "Start System" at least once
   selectedAudioUrl: string;
 
+  // Live stream (e.g. a Mac broadcasting its system audio via the desktop app)
+  liveStream: LiveStreamInfoType | null;
+
   // Websocket
   socket: WebSocket | null;
   lastMessageReceivedTime: number | null;
@@ -115,6 +120,8 @@ interface GlobalStateValues {
   roundTripEstimate: number;
   isSynced: boolean;
   nudgeOffsetMs: number;
+  /** Output delay the browser doesn't report (e.g. a Bluetooth speaker), measured by the desktop app's microphone */
+  measuredDelayCorrectionMs: number;
   probeStats: { totalSent: number; pureCount: number; impureCount: number };
 
   // Audio Player
@@ -189,9 +196,11 @@ interface GlobalState extends GlobalStateValues {
   setConnectedClients: (clients: ClientDataType[]) => void;
   sendProbePair: () => void;
   nudge: (data: { amountMs: number }) => void;
+  applyMeasuredDelayCorrection: (correctionMs: number) => void;
   resetNTPConfig: () => void;
   addProbePairResult: (result: NTPMeasurement) => void;
   onConnectionReset: () => void;
+  setLiveStream: (liveStream: LiveStreamInfoType | null) => void;
   playAudio: (data: { offset: number; when: number; absoluteStartTime?: number; audioIndex?: number }) => void;
   processSpatialConfig: (config: SpatialConfigType) => void;
   pauseAudio: (data: { when: number }) => void;
@@ -236,6 +245,21 @@ interface GlobalState extends GlobalStateValues {
 }
 
 // Define initial state values
+/**
+ * Kept for this tab only: a reload on the same speaker stays in sync, but another tab
+ * or browser (maybe on other speakers) starts unmeasured and gets timed when it joins
+ */
+const MEASURED_DELAY_STORAGE_KEY = "beatsync-measured-delay-correction-ms";
+
+function loadMeasuredDelayCorrection(): number {
+  try {
+    const value = Number(globalThis.sessionStorage?.getItem(MEASURED_DELAY_STORAGE_KEY) ?? 0);
+    return Number.isFinite(value) ? value : 0;
+  } catch {
+    return 0;
+  }
+}
+
 const initialState: GlobalStateValues = {
   // Audio Sources
   audioSources: [],
@@ -269,6 +293,8 @@ const initialState: GlobalStateValues = {
   roundTripEstimate: 0,
   isSynced: false,
   nudgeOffsetMs: 0,
+  measuredDelayCorrectionMs: loadMeasuredDelayCorrection(),
+  liveStream: null,
   probeStats: { totalSent: 0, pureCount: 0, impureCount: 0 },
 
   // Loading state
@@ -325,19 +351,44 @@ const getSocket = (state: GlobalState) => {
   };
 };
 
-export const MAX_TRUSTWORTHY_OUTPUT_LATENCY_MS = 100;
+/**
+ * Built-in and wired outputs report ~5-40ms and Bluetooth ~100-300ms (iOS reports the
+ * Bluetooth route's real delay since Safari 18.4). Readings above this have been bogus
+ * (e.g. 648ms on one Bluetooth device), so they're ignored.
+ */
+export const MAX_TRUSTWORTHY_OUTPUT_LATENCY_MS = 400;
+/** Reported latency jitters by a few ms; rounding keeps the room's buffer from chasing it */
+const OUTPUT_LATENCY_STEP_MS = 10;
+
+let lastIgnoredOutputLatencyMs = 0;
 
 /**
- * Read the browser's outputLatency, filtering out garbage values (e.g. Bluetooth reporting 648ms).
- * Wired speakers (~24ms) are trustworthy. Bluetooth users should use manual nudge.
+ * This device's output delay: how long after scheduling a sample it's actually heard.
+ * Uses the browser's outputLatency, which includes Bluetooth headphones and speakers
+ * (Safari 18.4+, Chrome), so a phone on AirPods plays early by the right amount on its
+ * own, and a live stream's buffer grows to make room for it. Re-read on every use, so it
+ * follows headphones connecting or disconnecting mid-session.
  */
 export const getFilteredOutputLatencyMs = (): number => {
+  // May go below 0 when this device plays early (a correction pulling it later); the
+  // room is only ever told a compensation of 0 or more
+  const { measuredDelayCorrectionMs } = useGlobalStore.getState();
+  return getReportedOutputLatencyMs() + measuredDelayCorrectionMs;
+};
+
+/** What the browser reports, minus readings that can't be right */
+const getReportedOutputLatencyMs = (): number => {
   const rawMs = (audioContextManager.getContext().outputLatency ?? 0) * 1000;
+  if (!Number.isFinite(rawMs) || rawMs <= 0) return 0;
   if (rawMs > MAX_TRUSTWORTHY_OUTPUT_LATENCY_MS) {
-    console.warn(`[OutputLatency] ignoring ${rawMs.toFixed(0)}ms (likely Bluetooth garbage — use nudge)`);
+    // Called for every scheduled frame; only log when the reading changes
+    if (Math.abs(rawMs - lastIgnoredOutputLatencyMs) > OUTPUT_LATENCY_STEP_MS) {
+      lastIgnoredOutputLatencyMs = rawMs;
+      console.warn(`[OutputLatency] ignoring ${rawMs.toFixed(0)}ms (implausible; use the timing nudge)`);
+    }
     return 0;
   }
-  return rawMs;
+  return Math.round(rawMs / OUTPUT_LATENCY_STEP_MS) * OUTPUT_LATENCY_STEP_MS;
 };
 
 const getWaitTimeSeconds = (state: GlobalState, targetServerTime: number) => {
@@ -671,8 +722,10 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
         set({ hasUserStartedSystem: true });
 
         try {
-          await audioContextManager.resume();
-          console.log("AudioContext resumed via user gesture");
+          // Without a user gesture (AUTO_START), the browser may hold resume() pending until
+          // the first tap; don't let that hold up joining the room's playback
+          await Promise.race([audioContextManager.resume(), new Promise((r) => setTimeout(r, 1000))]);
+          console.log("AudioContext resume requested");
         } catch (err) {
           console.warn("Failed to resume AudioContext", err);
         }
@@ -1022,9 +1075,24 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
       sendProbePairWS({
         ws: socket,
         currentRTT: state.roundTripEstimate ?? undefined,
-        compensationMs: totalCompensationMs > 0 ? totalCompensationMs : undefined,
+        // Always sent, 0 included, so the room sees Bluetooth headphones being disconnected
+        compensationMs: Math.max(0, totalCompensationMs),
         nudgeMs: state.nudgeOffsetMs,
       });
+    },
+
+    applyMeasuredDelayCorrection: (correctionMs) => {
+      const { MAX_CORRECTION_MS } = CALIBRATION_CONSTANTS;
+      const total = get().measuredDelayCorrectionMs + correctionMs;
+      const measuredDelayCorrectionMs = Math.max(-MAX_CORRECTION_MS, Math.min(MAX_CORRECTION_MS, Math.round(total)));
+      set({ measuredDelayCorrectionMs });
+      try {
+        sessionStorage.setItem(MEASURED_DELAY_STORAGE_KEY, String(measuredDelayCorrectionMs));
+      } catch {
+        // Private mode: lasts until the page reloads
+      }
+      // Report the new compensation now: a live stream's buffer grows to make room for it
+      if (get().socket?.readyState === WebSocket.OPEN) get().sendProbePair();
     },
 
     nudge: ({ amountMs }) => {
@@ -1080,6 +1148,16 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
         getKickBuffer(audioContextManager.getContext());
       }
     },
+    setLiveStream: (liveStream) => {
+      const state = get();
+      // Live audio takes over the speakers: stop local file playback immediately
+      // (the server also schedules a room-wide pause for everyone in sync)
+      if (liveStream && state.isPlaying) {
+        state.pauseAudio({ when: 0 });
+      }
+      set({ liveStream });
+    },
+
     onConnectionReset: () => {
       const state = get();
 

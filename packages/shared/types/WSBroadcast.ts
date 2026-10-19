@@ -18,6 +18,8 @@ export const ServerActionEnum = z.enum([
   "NTP_RESPONSE", // Reply to an NTP_REQUEST time sync probe
   "SEARCH_RESPONSE", // Music search results
   "LIVENESS_PING", // Liveness probe; client replies with LIVENESS_PONG
+  "CALIBRATION_CHIRP", // Play a timing chirp for the live broadcaster to measure
+  "CALIBRATION_RESULT", // How far off this client's chirp was heard; adjust timing by it
 ]);
 
 // Client change
@@ -66,6 +68,25 @@ const LoadAudioSourceSchema = z.object({
 });
 export type LoadAudioSourceType = z.infer<typeof LoadAudioSourceSchema>;
 
+// Live stream state: who (if anyone) is broadcasting live audio into the room
+export const LiveStreamInfoSchema = z.object({
+  streamId: z.number(),
+  broadcasterClientId: z.string(),
+  broadcasterUsername: z.string(),
+  sourceName: z.string(),
+  sampleRate: z.number(),
+  channels: z.number(),
+  latencyMs: z.number(),
+  startedAt: z.number(),
+});
+export type LiveStreamInfoType = z.infer<typeof LiveStreamInfoSchema>;
+
+const LiveStreamStateSchema = z.object({
+  type: z.literal("LIVE_STREAM_STATE"),
+  liveStream: LiveStreamInfoSchema.nullable(),
+});
+export type LiveStreamStateType = z.infer<typeof LiveStreamStateSchema>;
+
 const RoomEventSchema = z.object({
   type: z.literal(ServerActionEnum.enum.ROOM_EVENT),
   event: z.discriminatedUnion("type", [
@@ -74,6 +95,7 @@ const RoomEventSchema = z.object({
     SetPlaybackControlsSchema,
     ChatUpdateSchema,
     LoadAudioSourceSchema,
+    LiveStreamStateSchema,
   ]),
 });
 

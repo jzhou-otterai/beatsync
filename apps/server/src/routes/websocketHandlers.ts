@@ -4,7 +4,7 @@ import { sendBroadcast, sendToClient, sendUnicast } from "@/utils/responses";
 import type { BunServer, WSData } from "@/utils/websocket";
 import { dispatchMessage } from "@/websocket/dispatch";
 import type { WSBroadcastType } from "@beatsync/shared";
-import { epochNow, WSRequestSchema } from "@beatsync/shared";
+import { decodeLiveAudioFrameHeader, epochNow, LIVE_STREAM_CONSTANTS, WSRequestSchema } from "@beatsync/shared";
 import type { ServerWebSocket } from "bun";
 
 const createClientUpdate = (roomId: string) => {
@@ -49,6 +49,11 @@ export const handleOpen = (ws: ServerWebSocket<WSData>, server: BunServer) => {
   room.addClient(ws);
 
   const { audioSources, globalVolume, lowPassFreq } = room.getState();
+
+  const liveStream = room.getLiveStream();
+  if (liveStream) {
+    sendToClient({ ws, message: { type: "ROOM_EVENT", event: { type: "LIVE_STREAM_STATE", liveStream } } });
+  }
   const now = epochNow();
 
   // Send audio sources to the newly joined client
@@ -165,6 +170,12 @@ export const handleMessage = async (ws: ServerWebSocket<WSData>, message: string
   const t1 = epochNow(); // Always capture immediately on receive
   const { roomId, username } = ws.data;
 
+  // Binary frames are live audio chunks — relay them to the rest of the room as-is
+  if (typeof message !== "string") {
+    handleLiveAudioFrame(ws, message);
+    return;
+  }
+
   try {
     const parsedData: unknown = JSON.parse(message.toString());
 
@@ -188,12 +199,14 @@ export const handleMessage = async (ws: ServerWebSocket<WSData>, message: string
       };
 
       if (room) {
-        room.processNTPRequestFrom({
+        const compensationChanged = room.processNTPRequestFrom({
           clientId: ws.data.clientId,
           clientRTT: msg.clientRTT,
           clientCompensationMs: msg.clientCompensationMs,
           clientNudgeMs: msg.clientNudgeMs,
         });
+        // A live stream's broadcaster sizes its buffer from everyone's compensation
+        if (compensationChanged && !IS_DEMO_MODE) debouncedClientChangeBroadcast(server, roomId);
       }
 
       // Capture t2 as late as possible — right before send
@@ -220,6 +233,20 @@ export const handleMessage = async (ws: ServerWebSocket<WSData>, message: string
   }
 };
 
+const handleLiveAudioFrame = (ws: ServerWebSocket<WSData>, message: Buffer) => {
+  const { roomId, clientId } = ws.data;
+  const room = globalManager.getRoom(roomId);
+  if (!room) return;
+  room.markClientSeen(clientId);
+
+  if (message.byteLength > LIVE_STREAM_CONSTANTS.MAX_FRAME_BYTES) return;
+  const header = decodeLiveAudioFrameHeader(message);
+  if (!header || !room.isLiveBroadcaster(clientId, header.streamId)) return;
+
+  // ws.publish excludes the sender, which is exactly what we want
+  ws.publish(roomId, message);
+};
+
 export const handleClose = (ws: ServerWebSocket<WSData>, server: BunServer) => {
   try {
     console.log(`WebSocket connection closed for user ${ws.data.username} in room ${ws.data.roomId}`);
@@ -229,6 +256,16 @@ export const handleClose = (ws: ServerWebSocket<WSData>, server: BunServer) => {
 
     if (room) {
       room.removeClient(clientId);
+
+      // The broadcaster dropping ends the live stream for everyone
+      if (room.getLiveStream()?.broadcasterClientId === clientId) {
+        room.setLiveStream(null);
+        sendBroadcast({
+          server,
+          roomId,
+          message: { type: "ROOM_EVENT", event: { type: "LIVE_STREAM_STATE", liveStream: null } },
+        });
+      }
 
       // Schedule cleanup for rooms with no active connections
       if (!room.hasActiveConnections()) {

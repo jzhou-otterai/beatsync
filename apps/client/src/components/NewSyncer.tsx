@@ -4,9 +4,11 @@ import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useRoomStore } from "@/store/room";
 import { motion } from "motion/react";
 import { useEffect } from "react";
+import { AUTO_START } from "@/lib/autoStart";
 import { IS_DEMO_MODE } from "@/lib/demo";
 import { Dashboard } from "./dashboard/Dashboard";
 import { DemoDashboard } from "./dashboard/DemoDashboard";
+import { EnableSoundPrompt } from "./room/EnableSoundPrompt";
 import { WebSocketManager } from "./room/WebSocketManager";
 
 interface NewSyncerProps {
@@ -37,6 +39,8 @@ export const NewSyncer = ({ roomId }: NewSyncerProps) => {
 
       {/* Spatial audio background effects */}
       {/* <SpatialAudioBackground /> */}
+
+      {AUTO_START && <EnableSoundPrompt />}
 
       {IS_DEMO_MODE ? <DemoDashboard roomId={roomId} /> : <Dashboard roomId={roomId} />}
     </motion.div>

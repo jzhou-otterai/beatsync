@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'" />
+    <title>Beatsync Speaker</title>
+    <link rel="stylesheet" href="tray.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <span id="dot" class="dot"></span>
+        <div class="titles">
+          <div id="phase" class="phase">Not streaming</div>
+          <div id="detail" class="detail"></div>
+        </div>
+        <button id="openMain" class="icon-button" type="button" title="Open Beatsync Speaker">⤢</button>
+      </header>
+
+      <div class="meter"><div id="level"></div></div>
+
+      <label class="volume">
+        <div class="volume-row">
+          <span>Room volume</span>
+          <output id="volumeOut">–</output>
+        </div>
+        <input id="volume" type="range" min="0" max="100" step="1" value="100" disabled />
+        <small id="volumeHelp">Every other device in the room (not this Mac)</small>
+      </label>
+
+      <button id="toggle" class="primary" type="button">Start streaming</button>
+    </main>
+    <script src="tray.js"></script>
+  </body>
+</html>

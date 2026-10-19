@@ -4,6 +4,7 @@ import { useNtpHeartbeat } from "@/hooks/useNtpHeartbeat";
 import { useWebSocketReconnection } from "@/hooks/useWebSocketReconnection";
 import { IS_DEMO_MODE } from "@/lib/demo";
 import { getUserLocation } from "@/lib/ip";
+import { liveStreamPlayer } from "@/lib/liveStreamPlayer";
 import { getWsUrl } from "@/lib/urls";
 import { useGlobalStore } from "@/store/global";
 import { useRoomStore } from "@/store/room";
@@ -72,6 +73,8 @@ export const WebSocketManager = ({ roomId, username }: WebSocketManagerProps) =>
     }
 
     const ws = new WebSocket(SOCKET_URL);
+    // Live audio frames arrive as binary messages
+    ws.binaryType = "arraybuffer";
 
     setSocket(ws);
 
@@ -113,6 +116,8 @@ export const WebSocketManager = ({ roomId, username }: WebSocketManagerProps) =>
 
       // Clear NTP measurements on new connection to avoid stale data
       useGlobalStore.getState().onConnectionReset();
+      liveStreamPlayer.stop();
+      useGlobalStore.getState().setLiveStream(null);
 
       // Schedule reconnection with exponential backoff
       scheduleReconnection();
@@ -120,6 +125,12 @@ export const WebSocketManager = ({ roomId, username }: WebSocketManagerProps) =>
 
     const context = { ws, markNTPResponseReceived };
     ws.onmessage = (msg) => {
+      // Live audio frames arrive ~50x/s — handle them before touching the store
+      if (msg.data instanceof ArrayBuffer) {
+        liveStreamPlayer.handleBinaryMessage(msg.data);
+        return;
+      }
+
       // Update last message received time for connection health
       useGlobalStore.setState({ lastMessageReceivedTime: Date.now() });
 
