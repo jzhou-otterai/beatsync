@@ -5,7 +5,6 @@ import { useGlobalStore } from "@/store/global";
 import { ChevronsLeft, ChevronsRight } from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
-import { BluetoothDelayControl } from "./BluetoothDelayControl";
 import { MetronomeButton } from "./Metronome";
 
 const STEP_OPTIONS = [10, 50, 100] as const;
@@ -60,10 +59,7 @@ export const NudgeControl = () => {
           {step}
         </button>
       </div>
-      <div className="flex items-center gap-2">
-        <MetronomeButton />
-        <BluetoothDelayControl />
-      </div>
+      <MetronomeButton />
     </motion.div>
   );
 };

@@ -119,8 +119,6 @@ interface GlobalStateValues {
   roundTripEstimate: number;
   isSynced: boolean;
   nudgeOffsetMs: number;
-  /** Extra output delay of this device's Bluetooth speaker/headphones (0 = not Bluetooth) */
-  bluetoothDelayMs: number;
   probeStats: { totalSent: number; pureCount: number; impureCount: number };
 
   // Audio Player
@@ -195,7 +193,6 @@ interface GlobalState extends GlobalStateValues {
   setConnectedClients: (clients: ClientDataType[]) => void;
   sendProbePair: () => void;
   nudge: (data: { amountMs: number }) => void;
-  setBluetoothDelay: (delayMs: number) => void;
   resetNTPConfig: () => void;
   addProbePairResult: (result: NTPMeasurement) => void;
   onConnectionReset: () => void;
@@ -277,7 +274,6 @@ const initialState: GlobalStateValues = {
   roundTripEstimate: 0,
   isSynced: false,
   nudgeOffsetMs: 0,
-  bluetoothDelayMs: loadBluetoothDelayMs(),
   liveStream: null,
   probeStats: { totalSent: 0, pureCount: 0, impureCount: 0 },
 
@@ -335,34 +331,36 @@ const getSocket = (state: GlobalState) => {
   };
 };
 
-export const MAX_TRUSTWORTHY_OUTPUT_LATENCY_MS = 100;
+/**
+ * Built-in and wired outputs report ~5-40ms and Bluetooth ~100-300ms (iOS reports the
+ * Bluetooth route's real delay since Safari 18.4). Readings above this have been bogus
+ * (e.g. 648ms on one Bluetooth device), so they're ignored.
+ */
+export const MAX_TRUSTWORTHY_OUTPUT_LATENCY_MS = 400;
+/** Reported latency jitters by a few ms; rounding keeps the room's buffer from chasing it */
+const OUTPUT_LATENCY_STEP_MS = 10;
 
-// Per device, not per room: it describes this browser's audio output
-const BLUETOOTH_DELAY_STORAGE_KEY = "beatsync-bluetooth-delay-ms";
-
-function loadBluetoothDelayMs(): number {
-  try {
-    const value = Number(globalThis.localStorage?.getItem(BLUETOOTH_DELAY_STORAGE_KEY) ?? 0);
-    return Number.isFinite(value) && value > 0 ? value : 0;
-  } catch {
-    return 0;
-  }
-}
+let lastIgnoredOutputLatencyMs = 0;
 
 /**
- * Read the browser's outputLatency, filtering out garbage values (e.g. Bluetooth reporting 648ms).
- * Wired speakers (~24ms) are trustworthy. Browsers don't report Bluetooth delay reliably
- * (iOS Safari not at all), so a Bluetooth delay set on this device takes its place.
+ * This device's output delay: how long after scheduling a sample it's actually heard.
+ * Uses the browser's outputLatency, which includes Bluetooth headphones and speakers
+ * (Safari 18.4+, Chrome), so a phone on AirPods plays early by the right amount on its
+ * own, and a live stream's buffer grows to make room for it. Re-read on every use, so it
+ * follows headphones connecting or disconnecting mid-session.
  */
 export const getFilteredOutputLatencyMs = (): number => {
-  const { bluetoothDelayMs } = useGlobalStore.getState();
-  if (bluetoothDelayMs > 0) return bluetoothDelayMs;
   const rawMs = (audioContextManager.getContext().outputLatency ?? 0) * 1000;
+  if (!Number.isFinite(rawMs) || rawMs <= 0) return 0;
   if (rawMs > MAX_TRUSTWORTHY_OUTPUT_LATENCY_MS) {
-    console.warn(`[OutputLatency] ignoring ${rawMs.toFixed(0)}ms (likely Bluetooth garbage — use nudge)`);
+    // Called for every scheduled frame; only log when the reading changes
+    if (Math.abs(rawMs - lastIgnoredOutputLatencyMs) > OUTPUT_LATENCY_STEP_MS) {
+      lastIgnoredOutputLatencyMs = rawMs;
+      console.warn(`[OutputLatency] ignoring ${rawMs.toFixed(0)}ms (implausible; use the timing nudge)`);
+    }
     return 0;
   }
-  return rawMs;
+  return Math.round(rawMs / OUTPUT_LATENCY_STEP_MS) * OUTPUT_LATENCY_STEP_MS;
 };
 
 const getWaitTimeSeconds = (state: GlobalState, targetServerTime: number) => {
@@ -1049,22 +1047,10 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
       sendProbePairWS({
         ws: socket,
         currentRTT: state.roundTripEstimate ?? undefined,
-        // Always sent, 0 included, so the room sees a Bluetooth delay being turned off
+        // Always sent, 0 included, so the room sees Bluetooth headphones being disconnected
         compensationMs: Math.max(0, totalCompensationMs),
         nudgeMs: state.nudgeOffsetMs,
       });
-    },
-
-    setBluetoothDelay: (delayMs) => {
-      const bluetoothDelayMs = Math.max(0, Math.round(delayMs));
-      set({ bluetoothDelayMs });
-      try {
-        localStorage.setItem(BLUETOOTH_DELAY_STORAGE_KEY, String(bluetoothDelayMs));
-      } catch {
-        // Private mode: the setting lasts until the page closes
-      }
-      // Tell the room right away: a live stream's buffer grows to cover this device
-      if (get().socket?.readyState === WebSocket.OPEN) get().sendProbePair();
     },
 
     nudge: ({ amountMs }) => {
@@ -1584,8 +1570,6 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
       // Reset state to initial values
       set({
         ...initialState,
-        // A device setting, not room state: keep what this browser has saved
-        bluetoothDelayMs: loadBluetoothDelayMs(),
       });
 
       // Reinitialize audio player state (but reuse the same context)

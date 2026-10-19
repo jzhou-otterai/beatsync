@@ -97,15 +97,15 @@ area shows that link too. With an external dev setup (`http://localhost:3000`), 
 also swaps `localhost` in its server URL, so phones reach the server on the Mac.
 
 **Bluetooth listeners.** Bluetooth headphones and speakers play everything a few hundred ms
-late, and browsers don't report how late (iPhones not at all). On a phone using Bluetooth, tap
-**Bluetooth off** next to the timing nudge to cycle through typical delays (150-400 ms). AirPods
-are usually about 150-200 ms, most speakers 200-300 ms. Fine-tune with the nudge. The setting is
-saved on that device. That device then plays that much earlier. To make room for it, the app
-raises the stream's buffer to the slowest listener's delay plus 250 ms of network headroom. The
-Mac's own speakers are delayed by the same amount, so everything stays in step. The status area
-says when the buffer is raised. When that listener turns Bluetooth off or leaves, the buffer drops
-back to the one you set. Each change causes one short gap while everyone moves to the new
-timing.
+late. This is handled automatically: the web app reads the delay the browser reports
+(`AudioContext.outputLatency`, which covers Bluetooth on Safari 18.4+ and Chrome) and plays that
+much earlier. To make room for it, the app raises the stream's buffer to the slowest listener's
+delay plus 250 ms of network headroom. The Mac's own speakers are delayed by the same amount, so
+everything stays in step. The status area says when the buffer is raised. When those headphones
+disconnect or the listener leaves, the buffer drops back to the one you set. Each change causes
+one short gap while everyone moves to the new timing. Readings over 400 ms are treated as bogus
+and ignored. A browser that reports nothing (iOS before 18.4) can still be lined up by ear with
+the timing nudge.
 
 To remove the device:
 
