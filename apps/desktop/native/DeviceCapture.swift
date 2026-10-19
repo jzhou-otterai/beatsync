@@ -23,7 +23,8 @@
 //   {"event":"probe","installed":true,"microphone":"granted"}
 //   {"event":"format","sampleRate":48000,"channels":2}
 //   {"event":"routed","previousOutput":"MacBook Pro Speakers"}
-//   {"event":"monitoring","device":"MacBook Pro Speakers","delayMs":380}
+//   {"event":"monitoring","device":"MacBook Pro Speakers","delayMs":450}   (buffer + offset;
+//       re-sent whenever delay-ms or monitor-offset-ms changes it)
 //   {"event":"error","code":"...","message":"..."}
 //
 // Capture exits when stdin closes, so it never outlives the Electron app.
@@ -488,6 +489,21 @@ if let monitorDevice, delayLine != nil {
     }
 }
 
+// How far behind the Mac sounds, as reported in "monitoring" events: the room's buffer
+// plus the timing offset. (Internally the delay line's target is that minus the
+// speakers' own output latency, which the hardware adds back.) Main queue only.
+var monitorBufferMs = monitorDelayMs
+var monitorOffsetNowMs = max(-DelayLine.maxOffsetMs, min(DelayLine.maxOffsetMs, monitorOffsetMs))
+
+func emitMonitoring() {
+    guard let monitorDevice else { return }
+    emit([
+        "event": "monitoring",
+        "device": stringProperty(monitorDevice, kAudioObjectPropertyName) ?? "this Mac",
+        "delayMs": Int((monitorBufferMs + monitorOffsetNowMs).rounded()),
+    ])
+}
+
 // Play the delayed copy on the Mac's real output
 let monitorQueue = DispatchQueue(label: "gg.beatsync.capture.monitor", qos: .userInteractive)
 var monitorProcID: AudioDeviceIOProcID?
@@ -511,8 +527,7 @@ if let monitorDevice, let delayLine {
         }
     }
     if status == noErr, let monitorProcID, AudioDeviceStart(monitorDevice, monitorProcID) == noErr {
-        let delayMs = Int(Double(delayLine.targetFrames) / deviceSampleRate(monitorDevice) * 1000)
-        emit(["event": "monitoring", "device": stringProperty(monitorDevice, kAudioObjectPropertyName) ?? "this Mac", "delayMs": delayMs])
+        emitMonitoring()
     } else {
         emit(["event": "error", "code": "monitor-failed", "message": "Couldn't play on this Mac's speakers too (OSStatus \(status))"])
     }
@@ -555,13 +570,20 @@ DispatchQueue.global().async {
         let parts = line.split(separator: " ")
         if parts.count == 2, parts[0] == "monitor-offset-ms", let value = Double(parts[1]) {
             delayLine?.setOffset(ms: value)
+            DispatchQueue.main.async {
+                monitorOffsetNowMs = max(-DelayLine.maxOffsetMs, min(DelayLine.maxOffsetMs, value))
+                emitMonitoring()
+            }
         } else if parts.count == 2, parts[0] == "delay-ms", let value = Double(parts[1]),
                   let monitorDevice, let delayLine {
             // Same computation as at startup: buffer minus the speakers' output latency
             let rate = deviceSampleRate(monitorDevice)
             let targetMs = value - Double(outputLatencyFrames(monitorDevice)) / rate * 1000
             delayLine.setBaseFrames(Int(max(0, targetMs) / 1000 * rate))
-            emit(["event": "monitoring", "device": stringProperty(monitorDevice, kAudioObjectPropertyName) ?? "this Mac", "delayMs": Int(value)])
+            DispatchQueue.main.async {
+                monitorBufferMs = value
+                emitMonitoring()
+            }
         }
     }
     DispatchQueue.main.async {
