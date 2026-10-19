@@ -12,6 +12,7 @@ import type {
   ChatMessageType,
   ClientDataType,
   DiscoveryRoomType,
+  LiveStreamInfoType,
   PauseActionType,
   PlayActionType,
   PlaybackControlsPermissionsEnum,
@@ -120,6 +121,7 @@ export class RoomManager {
   private onBecameEmpty?: () => void;
   private playbackState: RoomPlaybackState = INITIAL_PLAYBACK_STATE;
   private playbackControlsPermissions: PlaybackControlsPermissionsType = "ADMIN_ONLY";
+  private liveStream: LiveStreamInfoType | null = null; // Active live audio broadcast (e.g. desktop system audio)
   private globalVolume = 1.0;
   private lowPassFreq: number = LOW_PASS_CONSTANTS.MAX_FREQ; // Default bypassed (full spectrum)
   private isMetronomeEnabled = false;
@@ -311,6 +313,37 @@ export class RoomManager {
 
   getPlaybackState(): RoomPlaybackState {
     return this.playbackState;
+  }
+
+  getLiveStream(): LiveStreamInfoType | null {
+    return this.liveStream;
+  }
+
+  setLiveStream(liveStream: LiveStreamInfoType | null): void {
+    this.liveStream = liveStream;
+  }
+
+  /** Whether binary audio frames from this client should be relayed to the room */
+  isLiveBroadcaster(clientId: string, streamId: number): boolean {
+    return this.liveStream?.broadcasterClientId === clientId && this.liveStream.streamId === streamId;
+  }
+
+  /**
+   * Pause file playback so it doesn't play over a live stream.
+   * Returns the PAUSE action to broadcast, or null if nothing was playing.
+   */
+  pauseFilePlaybackForLiveStream(): { action: PauseActionType; serverTimeToExecute: number } | null {
+    if (this.playbackState.type !== "playing") return null;
+
+    const serverTimeToExecute = this.getScheduledExecutionTime();
+    const elapsedMs = serverTimeToExecute - this.playbackState.serverTimeToExecute;
+    const action: PauseActionType = {
+      type: "PAUSE",
+      audioSource: this.playbackState.audioSource,
+      trackTimeSeconds: this.playbackState.trackPositionSeconds + Math.max(0, elapsedMs) / 1000,
+    };
+    this.updatePlaybackSchedulePause(action, serverTimeToExecute);
+    return { action, serverTimeToExecute };
   }
 
   /**

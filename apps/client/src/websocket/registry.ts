@@ -1,4 +1,5 @@
 import { useChatStore } from "@/store/chat";
+import { liveStreamPlayer } from "@/lib/liveStreamPlayer";
 import { useGlobalStore } from "@/store/global";
 import { getProbeStats, handleNTPResponse } from "@/utils/ntp";
 import { sendWSRequest } from "@/utils/ws";
@@ -25,6 +26,10 @@ const ROOM_EVENT_REGISTRY: {
   },
   LOAD_AUDIO_SOURCE: (event) => {
     useGlobalStore.getState().handleLoadAudioSource(event);
+  },
+  LIVE_STREAM_STATE: (event) => {
+    if (!event.liveStream) liveStreamPlayer.stop();
+    useGlobalStore.getState().setLiveStream(event.liveStream);
   },
 };
 

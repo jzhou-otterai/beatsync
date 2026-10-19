@@ -1,0 +1,158 @@
+:root {
+  --text: #fafafa;
+  --muted: #a3a3a3;
+  --faint: #737373;
+  --accent: #22c55e;
+  --live: #ef4444;
+  --warn: #f59e0b;
+  --track: rgb(255 255 255 / 0.12);
+  color-scheme: dark;
+}
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+}
+body {
+  /* The window has macOS popover vibrancy; tint it dark so text stays readable */
+  background: rgb(18 18 18 / 0.82);
+  color: var(--text);
+  font:
+    13px/1.4 -apple-system,
+    BlinkMacSystemFont,
+    "SF Pro Text",
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  border-radius: 12px;
+}
+main {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.titles {
+  flex: 1;
+  min-width: 0;
+}
+.phase {
+  font-weight: 600;
+}
+.detail {
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.detail:empty {
+  display: none;
+}
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #525252;
+  flex-shrink: 0;
+}
+.dot.connecting,
+.dot.syncing {
+  background: var(--warn);
+}
+.dot.ready {
+  background: var(--accent);
+}
+.dot.live {
+  background: var(--live);
+  animation: pulse 1.6s infinite;
+}
+.dot.error {
+  background: var(--live);
+}
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgb(239 68 68 / 0.6);
+  }
+  70% {
+    box-shadow: 0 0 0 7px rgb(239 68 68 / 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgb(239 68 68 / 0);
+  }
+}
+.icon-button {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 15px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 6px;
+}
+.icon-button:hover {
+  color: var(--text);
+  background: rgb(255 255 255 / 0.08);
+}
+.meter {
+  height: 4px;
+  background: var(--track);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.meter > div {
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width 0.08s linear;
+}
+.volume {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.volume-row {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 12px;
+}
+.volume-row output {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.volume input {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.volume input:disabled {
+  opacity: 0.4;
+}
+small {
+  color: var(--faint);
+  font-size: 11px;
+}
+button.primary {
+  font: inherit;
+  font-weight: 600;
+  border: none;
+  border-radius: 999px;
+  padding: 8px;
+  cursor: pointer;
+  background: var(--text);
+  color: #000;
+}
+button.primary.stop {
+  background: rgb(255 255 255 / 0.12);
+  color: var(--text);
+}

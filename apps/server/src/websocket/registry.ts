@@ -22,6 +22,8 @@ import { handleReorderAudioSources } from "@/websocket/handlers/handleReorderAud
 import { handleSetMetronome } from "@/websocket/handlers/setMetronome";
 import { handleSetLowPassFreq } from "@/websocket/handlers/setLowPassFreq";
 import { handleSync } from "@/websocket/handlers/sync";
+import { handleStartLiveStream } from "@/websocket/handlers/startLiveStream";
+import { handleStopLiveStream } from "@/websocket/handlers/stopLiveStream";
 import type { WebsocketRegistry } from "@/websocket/types";
 
 export const WS_REGISTRY: WebsocketRegistry = {
@@ -132,5 +134,13 @@ export const WS_REGISTRY: WebsocketRegistry = {
   [ClientActionEnum.enum.LIVENESS_PONG]: {
     handle: handleLivenessPong,
     description: "Liveness reply to a server LIVENESS_PING",
+  },
+  [ClientActionEnum.enum.START_LIVE_STREAM]: {
+    handle: handleStartLiveStream,
+    description: "Become the room's live audio broadcaster",
+  },
+  [ClientActionEnum.enum.STOP_LIVE_STREAM]: {
+    handle: handleStopLiveStream,
+    description: "Stop the room's live audio broadcast",
   },
 };

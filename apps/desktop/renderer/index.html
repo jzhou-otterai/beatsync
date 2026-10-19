@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'" />
+    <title>Beatsync Speaker</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="drag"></div>
+    <main>
+      <header>
+        <h1>Beatsync Speaker</h1>
+        <p class="sub">Play your Mac's audio through every device in a Beatsync room.</p>
+      </header>
+
+      <form id="form">
+        <label>
+          <span>Room code</span>
+          <input id="roomId" inputmode="numeric" maxlength="6" pattern="\d{6}" placeholder="123456" required />
+        </label>
+        <label>
+          <span>Your name</span>
+          <input id="username" maxlength="40" required />
+        </label>
+
+        <div id="device" class="device">
+          <div class="row">
+            <span id="deviceDot" class="dot"></span>
+            <span id="deviceTitle">Checking for the Beatsync audio device…</span>
+          </div>
+          <p id="deviceHelp" class="device-help"></p>
+          <div class="links">
+            <button id="recheckDevice" class="link" type="button">Check again</button>
+            <button id="openSound" class="link" type="button">Open Sound settings ↗</button>
+          </div>
+        </div>
+
+        <label class="toggle">
+          <input id="routeOutput" type="checkbox" />
+          <span>
+            Switch this Mac's output to Beatsync while streaming
+            <small
+              >Switches back when you stop. Turn off to choose Beatsync yourself, e.g. only in Spotify's output
+              menu</small
+            >
+          </span>
+        </label>
+
+        <label class="toggle">
+          <input id="playOnMac" type="checkbox" />
+          <span>
+            Also play on this Mac
+            <small
+              >Plays through your Mac's speakers too, delayed by the buffer so it stays in sync with the room</small
+            >
+          </span>
+        </label>
+
+        <label class="mac-timing">
+          <span>Mac timing <output id="macOffsetOut">0 ms</output></span>
+          <input id="macOffset" type="range" min="-250" max="250" step="5" value="0" />
+          <small>If the Mac sounds ahead of the phones, slide right (later); if behind, slide left. Applies live</small>
+        </label>
+
+        <details>
+          <summary>Advanced</summary>
+          <label>
+            <span>Buffer <output id="latencyOut"></output></span>
+            <input id="latencyMs" type="range" min="100" max="2000" step="50" />
+            <small>Lower is snappier; raise it if devices stutter on a busy network</small>
+          </label>
+          <label>
+            <span>Server WebSocket URL</span>
+            <input id="wsUrl" type="url" required />
+          </label>
+          <label>
+            <span>Web app URL</span>
+            <input id="webUrl" type="url" required />
+          </label>
+        </details>
+
+        <button id="toggle" type="submit">Start streaming</button>
+      </form>
+
+      <section class="status">
+        <div class="row">
+          <span id="dot" class="dot"></span>
+          <span id="phase">Not streaming</span>
+        </div>
+        <p id="message" class="message"></p>
+        <div class="meter"><div id="level"></div></div>
+        <label class="room-volume">
+          <span>Room volume <output id="roomVolumeOut">–</output></span>
+          <input id="roomVolume" type="range" min="0" max="100" step="1" value="100" disabled />
+          <small id="roomVolumeHelp"
+            >Sets the volume on every other device in the room. This Mac follows its own volume keys</small
+          >
+        </label>
+        <dl id="stats">
+          <div>
+            <dt>RTT</dt>
+            <dd id="rtt">–</dd>
+          </div>
+          <div>
+            <dt>Clock offset</dt>
+            <dd id="offset">–</dd>
+          </div>
+          <div>
+            <dt>Others in room</dt>
+            <dd id="listeners">–</dd>
+          </div>
+          <div>
+            <dt>Frames sent</dt>
+            <dd id="frames">–</dd>
+          </div>
+        </dl>
+        <div class="links">
+          <button id="copyLan" class="link" type="button">Copy LAN join link</button>
+          <button id="openRoom" class="link" type="button">Open room in browser ↗</button>
+        </div>
+        <p id="lanResult" class="lan-result"></p>
+        <p id="notes" class="lan-result"></p>
+      </section>
+    </main>
+    <script src="renderer.js"></script>
+  </body>
+</html>
