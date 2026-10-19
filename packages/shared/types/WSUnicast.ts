@@ -26,10 +26,25 @@ const LivenessPingMessageSchema = z.object({
   type: z.literal(ServerActionEnum.enum.LIVENESS_PING),
 });
 
+// Relayed from the live broadcaster, which times each listener with its microphone
+const CalibrationChirpMessageSchema = z.object({
+  type: z.literal(ServerActionEnum.enum.CALIBRATION_CHIRP),
+  chirpId: z.number(),
+  playAtServerTime: z.number(),
+});
+
+const CalibrationResultMessageSchema = z.object({
+  type: z.literal(ServerActionEnum.enum.CALIBRATION_RESULT),
+  chirpId: z.number(),
+  correctionMs: z.number(),
+});
+
 export const WSUnicastSchema = z.discriminatedUnion("type", [
   NTPResponseMessageSchema,
   ScheduledActionSchema,
   MusicSearchResponseSchema,
   LivenessPingMessageSchema,
+  CalibrationChirpMessageSchema,
+  CalibrationResultMessageSchema,
 ]);
 export type WSUnicastType = z.infer<typeof WSUnicastSchema>;

@@ -24,6 +24,7 @@ import { handleSetLowPassFreq } from "@/websocket/handlers/setLowPassFreq";
 import { handleSync } from "@/websocket/handlers/sync";
 import { handleStartLiveStream } from "@/websocket/handlers/startLiveStream";
 import { handleStopLiveStream } from "@/websocket/handlers/stopLiveStream";
+import { handleCalibrationChirp, handleCalibrationResult } from "@/websocket/handlers/calibration";
 import type { WebsocketRegistry } from "@/websocket/types";
 
 export const WS_REGISTRY: WebsocketRegistry = {
@@ -142,5 +143,15 @@ export const WS_REGISTRY: WebsocketRegistry = {
   [ClientActionEnum.enum.STOP_LIVE_STREAM]: {
     handle: handleStopLiveStream,
     description: "Stop the room's live audio broadcast",
+  },
+
+  [ClientActionEnum.enum.CALIBRATION_CHIRP]: {
+    handle: handleCalibrationChirp,
+    description: "Live broadcaster asks one listener to play a timing chirp",
+  },
+
+  [ClientActionEnum.enum.CALIBRATION_RESULT]: {
+    handle: handleCalibrationResult,
+    description: "Live broadcaster tells one listener how far off its chirp was",
   },
 };

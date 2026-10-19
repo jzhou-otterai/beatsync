@@ -1,17 +1,16 @@
-// The buffer is what lets a Bluetooth listener play early. Too small and that device
-// silently drops every frame as "late"; it should also never shrink below what the
-// user chose, or exceed what the Mac's delay line holds.
+// The buffer is what lets a Bluetooth listener play early. If it doesn't grow by that
+// listener's full delay, every frame reaches it too late and it plays nothing.
 
 import { describe, expect, it } from "bun:test";
-import { effectiveBufferMs, LISTENER_HEADROOM_MS, MAX_BUFFER_MS } from "../bufferSizing";
+import { effectiveBufferMs, MAX_BUFFER_MS } from "../bufferSizing";
 
 describe("effectiveBufferMs", () => {
-  it("grows to the slowest listener's delay plus headroom", () => {
-    expect(effectiveBufferMs(300, 250)).toBe(250 + LISTENER_HEADROOM_MS);
+  it("grows by the slowest listener's delay on top of the configured buffer", () => {
+    expect(effectiveBufferMs(550, 290)).toBe(840);
   });
 
-  it("keeps the configured buffer when it's already enough", () => {
-    expect(effectiveBufferMs(450, 20)).toBe(450);
+  it("is the configured buffer when nobody needs extra lead", () => {
+    expect(effectiveBufferMs(450, 0)).toBe(450);
   });
 
   it("never exceeds the maximum buffer", () => {

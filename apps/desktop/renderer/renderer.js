@@ -92,7 +92,14 @@ const renderStatus = (status) => {
 
   if (status.phase === "idle") {
     setRunning(false);
-    Object.assign(notes, { hosting: null, buffer: null, routedFrom: null, monitoring: null, warning: null });
+    Object.assign(notes, {
+      hosting: null,
+      buffer: null,
+      calibration: null,
+      routedFrom: null,
+      monitoring: null,
+      warning: null,
+    });
     $("notes").textContent = "";
   } else if (!running) {
     // Started from the menu bar
@@ -138,7 +145,7 @@ $("recheckDevice").addEventListener("click", checkDevice);
 api.onDevice(renderDevice);
 $("openSound").addEventListener("click", () => api.openSoundSettings());
 // What the helper did with the Mac's own audio while starting
-const notes = { hosting: null, buffer: null, routedFrom: null, monitoring: null, warning: null };
+const notes = { hosting: null, buffer: null, calibration: null, routedFrom: null, monitoring: null, warning: null };
 api.onNote((note) => {
   Object.assign(notes, note);
   const parts = [];
@@ -151,6 +158,7 @@ api.onNote((note) => {
     parts.push(`Mac output switched to Beatsync (was ${notes.routedFrom}); it switches back when you stop.`);
   if (notes.monitoring)
     parts.push(`Also playing on ${notes.monitoring.device}, ${notes.monitoring.delayMs} ms behind to match the room.`);
+  if (notes.calibration) parts.push(notes.calibration);
   if (notes.warning) parts.push(notes.warning);
   const el = $("notes");
   el.textContent = parts.join(" ");
@@ -169,6 +177,15 @@ $("form").addEventListener("submit", async (e) => {
 });
 
 $("openRoom").addEventListener("click", () => api.openRoom());
+
+// Timing is checked by ear (the Mac's microphone) when devices join; this redoes it,
+// e.g. after a phone switched to a Bluetooth speaker mid-session
+$("recheckTiming").addEventListener("click", async () => {
+  const result = await api.recheckTiming();
+  const el = $("lanResult");
+  el.textContent = result.message;
+  el.classList.toggle("error", !result.ok);
+});
 
 let lanResultTimer;
 $("copyLan").addEventListener("click", async () => {

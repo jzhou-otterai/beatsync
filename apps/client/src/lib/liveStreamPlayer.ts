@@ -10,6 +10,16 @@ const MAX_RATE_CORRECTION = 0.003;
 const MIN_SCHEDULE_AHEAD_S = 0.005;
 
 /**
+ * AudioContext time at which a sample must start to be heard at `serverTime`: the
+ * NTP offset + nudge + output delay compensation every scheduled sound uses.
+ */
+export const serverTimeToAudioTime = (serverTime: number): number => {
+  const { offsetEstimate, nudgeOffsetMs } = useGlobalStore.getState();
+  const waitMs = serverTime - (epochNow() + offsetEstimate + nudgeOffsetMs) - getFilteredOutputLatencyMs();
+  return audioContextManager.perfTimeToAudioTime(performance.now() + waitMs);
+};
+
+/**
  * Plays a live PCM stream relayed by the server (e.g. a Mac's system audio).
  *
  * Every frame carries the server time its first sample should be heard. We map that
@@ -45,16 +55,10 @@ class LiveStreamPlayer {
     this.schedule(frame);
   }
 
-  private targetAudioTime(playAtServerTime: number): number {
-    const { offsetEstimate, nudgeOffsetMs } = useGlobalStore.getState();
-    const waitMs = playAtServerTime - (epochNow() + offsetEstimate + nudgeOffsetMs) - getFilteredOutputLatencyMs();
-    return audioContextManager.perfTimeToAudioTime(performance.now() + waitMs);
-  }
-
   private schedule(frame: LiveAudioFrame): void {
     const ctx = audioContextManager.getContext();
     const frameCount = frame.samples.length / frame.channels;
-    const target = this.targetAudioTime(frame.playAtServerTime);
+    const target = serverTimeToAudioTime(frame.playAtServerTime);
 
     let startAt = this.nextStartTime ?? target;
     let error = startAt - target; // > 0: we're running late, < 0: early

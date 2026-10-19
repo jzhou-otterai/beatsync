@@ -18,6 +18,8 @@ export const ServerActionEnum = z.enum([
   "NTP_RESPONSE", // Reply to an NTP_REQUEST time sync probe
   "SEARCH_RESPONSE", // Music search results
   "LIVENESS_PING", // Liveness probe; client replies with LIVENESS_PONG
+  "CALIBRATION_CHIRP", // Play a timing chirp for the live broadcaster to measure
+  "CALIBRATION_RESULT", // How far off this client's chirp was heard; adjust timing by it
 ]);
 
 // Client change

@@ -318,6 +318,11 @@ export class RoomManager {
     return this.playbackState;
   }
 
+  /** The open socket of a connected client */
+  getClientWs(clientId: string): ServerWebSocket<WSData> | undefined {
+    return this.wsConnections.get(clientId);
+  }
+
   getLiveStream(): LiveStreamInfoType | null {
     return this.liveStream;
   }

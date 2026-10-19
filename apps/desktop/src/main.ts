@@ -1,7 +1,7 @@
 import { LIVE_STREAM_CONSTANTS } from "@beatsync/shared";
 import { app, BrowserWindow, clipboard, ipcMain, shell } from "electron";
 import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { hostname, networkInterfaces } from "node:os";
 import path from "node:path";
 import { AudioCapture, probeDevice } from "./audioCapture";
@@ -9,7 +9,9 @@ import { Broadcaster, initialBroadcasterStatus, type BroadcasterStatus } from ".
 import { effectiveBufferMs, MIN_BUFFER_CHANGE_MS } from "./bufferSizing";
 import { driverNeedsInstall, installDriver } from "./driverInstall";
 import { findLanAddress, lanJoinUrl } from "./lanUrl";
+import { ListenerCalibration } from "./listenerCalibration";
 import { DEFAULT_LOCAL_PORT, LocalServer } from "./localServer";
+import { MicCalibrator } from "./micCalibrator";
 import { MenuBar } from "./tray";
 
 export interface Settings {
@@ -95,6 +97,38 @@ const resolveUrls = async (s: Pick<Settings, "hostLocally" | "localPort" | "wsUr
   return { wsUrl: `ws://127.0.0.1:${port}/ws`, webUrl: `http://127.0.0.1:${port}` };
 };
 
+const appendCalibrationLog = (line: string) => {
+  try {
+    mkdirSync(app.getPath("logs"), { recursive: true });
+    appendFileSync(path.join(app.getPath("logs"), "calibration.log"), `${new Date().toISOString()} ${line}\n`);
+  } catch {
+    // Logging is best effort
+  }
+};
+
+/**
+ * Keep the last few calibration recordings (raw float32 mono + where the reference was
+ * scheduled), so a timing problem in a real room can be analyzed after the fact
+ */
+let recordingCount = 0;
+const saveCalibrationRecording = (rec: { recording: Float32Array; refIndex: number; sampleRate: number }) => {
+  try {
+    const dir = path.join(app.getPath("logs"), "calibration");
+    mkdirSync(dir, { recursive: true });
+    const name = `rec-${recordingCount++ % 5}`;
+    writeFileSync(
+      path.join(dir, `${name}.f32`),
+      Buffer.from(rec.recording.buffer, rec.recording.byteOffset, rec.recording.byteLength)
+    );
+    writeFileSync(
+      path.join(dir, `${name}.json`),
+      JSON.stringify({ refIndex: rec.refIndex, sampleRate: rec.sampleRate, at: new Date().toISOString() })
+    );
+  } catch {
+    // Diagnostics are best effort
+  }
+};
+
 /** Core Audio takes a moment to come back after a restart */
 const waitForDevice = async (timeoutMs = 10_000) => {
   const deadline = Date.now() + timeoutMs;
@@ -126,6 +160,11 @@ const ensureDevice = async (): Promise<string | null> => {
 
 let win: BrowserWindow | null = null;
 let menuBar: MenuBar | null = null;
+let micCalibrator: MicCalibrator | null = null;
+let calibration: ListenerCalibration | null = null;
+let listeners: { clientId: string; username: string }[] = [];
+/** The Mac's real speakers, where its own copy plays (from the capture helper) */
+let monitorDeviceName: string | null = null;
 let settings: Settings;
 let broadcaster: Broadcaster | null = null;
 let capture: AudioCapture | null = null;
@@ -153,6 +192,8 @@ const peakOf = (pcm: Buffer): number => {
 };
 
 const stopAll = () => {
+  calibration?.stop();
+  calibration = null;
   capture?.stop();
   capture = null;
   broadcaster?.disconnect();
@@ -194,23 +235,57 @@ const start = async (next: Omit<Settings, "clientId">) => {
   // The buffer in use: the configured one, raised while a listener needs more lead
   // (Bluetooth on a phone). The Mac's own copy is delayed by the same amount.
   let bufferMs = settings.latencyMs;
+  let lastPhase: BroadcasterStatus["phase"] = "idle";
   const b = new Broadcaster({
     wsUrl,
     roomId: settings.roomId,
     username: settings.username,
     clientId: settings.clientId,
-    onStatus: sendStatus,
+    onStatus: (status) => {
+      // Going live: time whoever is already in the room
+      if (status.phase === "live" && lastPhase !== "live") calibration?.updateListeners(listeners);
+      lastPhase = status.phase;
+      sendStatus(status);
+    },
+    // Time each listener with the Mac's microphone as it joins (e.g. a phone on a Bluetooth speaker)
+    onListeners: (next) => {
+      listeners = next;
+      if (b.getStatus().phase === "live") calibration?.updateListeners(next);
+    },
     onListenerCompensation: (maxMs) => {
       const next = effectiveBufferMs(settings.latencyMs, maxMs);
       if (Math.abs(next - bufferMs) < MIN_BUFFER_CHANGE_MS) return;
       bufferMs = next;
       b.setLatency(next);
       capture?.setDelay(next);
-      sendToAll("note", { buffer: next > settings.latencyMs ? { ms: next, listenerMs: maxMs } : null });
+      // Wired outputs add ~10-40ms; only call out Bluetooth-sized delays
+      sendToAll("note", { buffer: maxMs >= 80 ? { ms: next, listenerMs: maxMs } : null });
     },
   });
   broadcaster = b;
   b.connect();
+
+  const mic = micCalibrator;
+  calibration = mic
+    ? new ListenerCalibration({
+        serverNow: () => b.serverNow(),
+        clockOffsetMs: () => b.clockOffsetMs(),
+        sendChirp: (id, chirpId, at) => b.sendCalibrationChirp(id, chirpId, at),
+        sendResult: (id, chirpId, ms) => b.sendCalibrationResult(id, chirpId, ms),
+        measure: async (at, chirp, recordMs) => {
+          const rec = await mic.measure(at, chirp, recordMs);
+          saveCalibrationRecording(rec);
+          return rec;
+        },
+        sampleRate: async () => (await mic.start()).sampleRate,
+        release: () => mic.stop(),
+        onNote: (message) => {
+          sendToAll("note", { calibration: message });
+          appendCalibrationLog(message);
+        },
+        log: appendCalibrationLog,
+      })
+    : null;
 
   const c = new AudioCapture(helperPath());
   capture = c;
@@ -232,7 +307,10 @@ const start = async (next: Omit<Settings, "clientId">) => {
         b.pushPcm(pcm);
       },
       onRouted: (previousOutput) => sendToAll("note", { routedFrom: previousOutput }),
-      onMonitoring: (device, delayMs) => sendToAll("note", { monitoring: { device, delayMs } }),
+      onMonitoring: (device, delayMs) => {
+        monitorDeviceName = device;
+        sendToAll("note", { monitoring: { device, delayMs } });
+      },
       onWarning: (message) => sendToAll("note", { warning: message }),
       onError: (message) => sendStatus({ ...b.getStatus(), phase: "error", message }),
       onExit: (error) => {
@@ -353,6 +431,14 @@ app.whenReady().then(() => {
       return { ok: true, url };
     }
   );
+  ipcMain.handle("recheck-timing", () => {
+    if (broadcaster?.getStatus().phase !== "live" || !calibration) {
+      return { ok: false, message: "Start streaming first" };
+    }
+    if (!listeners.length) return { ok: false, message: "No one else is in the room yet" };
+    calibration.recheck(listeners);
+    return { ok: true, message: `Checking timing of ${listeners.length} device${listeners.length === 1 ? "" : "s"}…` };
+  });
   ipcMain.handle("open-room", async () => {
     if (!settings.roomId) return;
     try {
@@ -366,6 +452,11 @@ app.whenReady().then(() => {
   // Packaged builds get the icon from icon.icns; in development, show it in the Dock too
   if (!app.isPackaged) app.dock?.setIcon(path.join(app.getAppPath(), "resources", "icon.png"));
   menuBar = new MenuBar({ preloadPath: preloadPath(), onShowMain: showMainWindow });
+  micCalibrator = new MicCalibrator({
+    appPath: app.getAppPath(),
+    preloadPath: path.join(app.getAppPath(), "dist", "calibrationPreload.js"),
+    outputDeviceName: () => monitorDeviceName,
+  });
   createWindow();
   app.on("activate", showMainWindow);
 });

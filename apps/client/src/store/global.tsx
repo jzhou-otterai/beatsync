@@ -16,6 +16,7 @@ import {
 import { sendWSRequest } from "@/utils/ws";
 import {
   AudioSourceSchema,
+  CALIBRATION_CONSTANTS,
   AudioSourceType,
   ClientActionEnum,
   ClientDataType,
@@ -119,6 +120,8 @@ interface GlobalStateValues {
   roundTripEstimate: number;
   isSynced: boolean;
   nudgeOffsetMs: number;
+  /** Output delay the browser doesn't report (e.g. a Bluetooth speaker), measured by the desktop app's microphone */
+  measuredDelayCorrectionMs: number;
   probeStats: { totalSent: number; pureCount: number; impureCount: number };
 
   // Audio Player
@@ -193,6 +196,7 @@ interface GlobalState extends GlobalStateValues {
   setConnectedClients: (clients: ClientDataType[]) => void;
   sendProbePair: () => void;
   nudge: (data: { amountMs: number }) => void;
+  applyMeasuredDelayCorrection: (correctionMs: number) => void;
   resetNTPConfig: () => void;
   addProbePairResult: (result: NTPMeasurement) => void;
   onConnectionReset: () => void;
@@ -241,6 +245,21 @@ interface GlobalState extends GlobalStateValues {
 }
 
 // Define initial state values
+/**
+ * Kept for this tab only: a reload on the same speaker stays in sync, but another tab
+ * or browser (maybe on other speakers) starts unmeasured and gets timed when it joins
+ */
+const MEASURED_DELAY_STORAGE_KEY = "beatsync-measured-delay-correction-ms";
+
+function loadMeasuredDelayCorrection(): number {
+  try {
+    const value = Number(globalThis.sessionStorage?.getItem(MEASURED_DELAY_STORAGE_KEY) ?? 0);
+    return Number.isFinite(value) ? value : 0;
+  } catch {
+    return 0;
+  }
+}
+
 const initialState: GlobalStateValues = {
   // Audio Sources
   audioSources: [],
@@ -274,6 +293,7 @@ const initialState: GlobalStateValues = {
   roundTripEstimate: 0,
   isSynced: false,
   nudgeOffsetMs: 0,
+  measuredDelayCorrectionMs: loadMeasuredDelayCorrection(),
   liveStream: null,
   probeStats: { totalSent: 0, pureCount: 0, impureCount: 0 },
 
@@ -350,6 +370,14 @@ let lastIgnoredOutputLatencyMs = 0;
  * follows headphones connecting or disconnecting mid-session.
  */
 export const getFilteredOutputLatencyMs = (): number => {
+  // May go below 0 when this device plays early (a correction pulling it later); the
+  // room is only ever told a compensation of 0 or more
+  const { measuredDelayCorrectionMs } = useGlobalStore.getState();
+  return getReportedOutputLatencyMs() + measuredDelayCorrectionMs;
+};
+
+/** What the browser reports, minus readings that can't be right */
+const getReportedOutputLatencyMs = (): number => {
   const rawMs = (audioContextManager.getContext().outputLatency ?? 0) * 1000;
   if (!Number.isFinite(rawMs) || rawMs <= 0) return 0;
   if (rawMs > MAX_TRUSTWORTHY_OUTPUT_LATENCY_MS) {
@@ -1051,6 +1079,20 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
         compensationMs: Math.max(0, totalCompensationMs),
         nudgeMs: state.nudgeOffsetMs,
       });
+    },
+
+    applyMeasuredDelayCorrection: (correctionMs) => {
+      const { MAX_CORRECTION_MS } = CALIBRATION_CONSTANTS;
+      const total = get().measuredDelayCorrectionMs + correctionMs;
+      const measuredDelayCorrectionMs = Math.max(-MAX_CORRECTION_MS, Math.min(MAX_CORRECTION_MS, Math.round(total)));
+      set({ measuredDelayCorrectionMs });
+      try {
+        sessionStorage.setItem(MEASURED_DELAY_STORAGE_KEY, String(measuredDelayCorrectionMs));
+      } catch {
+        // Private mode: lasts until the page reloads
+      }
+      // Report the new compensation now: a live stream's buffer grows to make room for it
+      if (get().socket?.readyState === WebSocket.OPEN) get().sendProbePair();
     },
 
     nudge: ({ amountMs }) => {

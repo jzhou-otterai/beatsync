@@ -66,6 +66,8 @@ export interface BroadcasterOptions {
   onGlobalVolume?: (volume: number) => void;
   /** A listener's output compensation changed the largest one in the room */
   onListenerCompensation?: (maxMs: number) => void;
+  /** Everyone in the room except this broadcaster, on every client change */
+  onListeners?: (listeners: { clientId: string; username: string }[]) => void;
 }
 
 /**
@@ -150,6 +152,26 @@ export class Broadcaster {
   startStream(format: CaptureFormat, latencyMs: number, sourceName: string): void {
     this.pendingStart = { format, latencyMs, sourceName };
     if (this.clock.isSynced) this.sendStart();
+  }
+
+  /** Current server time (epoch ms) */
+  serverNow(): number {
+    return this.clock.now();
+  }
+
+  /** Server time minus this machine's clock */
+  clockOffsetMs(): number {
+    return this.clock.offsetMs;
+  }
+
+  /** Ask one listener to play the calibration chirp at a server time */
+  sendCalibrationChirp(targetClientId: string, chirpId: number, playAtServerTime: number): void {
+    this.send({ type: ClientActionEnum.enum.CALIBRATION_CHIRP, targetClientId, chirpId, playAtServerTime });
+  }
+
+  /** Tell one listener how late (+) or early (-) its chirp was heard */
+  sendCalibrationResult(targetClientId: string, chirpId: number, correctionMs: number): void {
+    this.send({ type: ClientActionEnum.enum.CALIBRATION_RESULT, targetClientId, chirpId, correctionMs });
   }
 
   /** Change the buffer of the stream that's running (or about to start) */
@@ -266,6 +288,11 @@ export class Broadcaster {
             maxListenerCompensationMs,
           });
           if (compensationChanged) this.opts.onListenerCompensation?.(maxListenerCompensationMs);
+          this.opts.onListeners?.(
+            event.clients
+              .filter((c) => c.clientId !== this.opts.clientId)
+              .map((c) => ({ clientId: c.clientId, username: c.username }))
+          );
         } else if (event.type === "SET_PLAYBACK_CONTROLS") {
           this.permissions = event.permissions;
           this.update({ canControl: this.status.isAdmin || event.permissions === "EVERYONE" });

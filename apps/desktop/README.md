@@ -99,13 +99,29 @@ also swaps `localhost` in its server URL, so phones reach the server on the Mac.
 **Bluetooth listeners.** Bluetooth headphones and speakers play everything a few hundred ms
 late. This is handled automatically: the web app reads the delay the browser reports
 (`AudioContext.outputLatency`, which covers Bluetooth on Safari 18.4+ and Chrome) and plays that
-much earlier. To make room for it, the app raises the stream's buffer to the slowest listener's
-delay plus 250 ms of network headroom. The Mac's own speakers are delayed by the same amount, so
+much earlier. To make room for it, the app grows the stream's buffer by the slowest listener's
+delay: your buffer plus, say, 290 ms for a phone on a Bluetooth speaker. Without that, the frames
+reach that device too late to play early, and it goes silent. The Mac's own speakers are delayed by the same amount, so
 everything stays in step. The status area says when the buffer is raised. When those headphones
 disconnect or the listener leaves, the buffer drops back to the one you set. Each change causes
 one short gap while everyone moves to the new timing. Readings over 400 ms are treated as bogus
 and ignored. A browser that reports nothing (iOS before 18.4) can still be lined up by ear with
 the timing nudge.
+
+**Timing by ear.** Some delay isn't reported at all. An iPhone playing through a Bluetooth speaker
+says it's ~20 ms late when it's really ~200 ms late. So whenever you go live, and whenever a
+device joins, the app checks each listener by ear with the Mac's microphone. It plays a short
+chirp on the Mac's speakers and asks that device to play the same chirp 600 ms later, each with its
+normal timing. How far the device's chirp lands from 600 ms after the Mac's is how far off it
+plays. The device shifts by that much, and the room's buffer grows to make room for it.
+This repeats until the device is within 15 ms, at most three rounds. Measuring the gap between two
+sounds in one recording cancels out the microphone's own delay, and lines everyone up with this
+Mac's speakers. The status area shows the result, e.g. "Synced convivial-badger: it was 190 ms
+behind". The Mac's mic can hear speakers in the room, but not headphones. A device it can't hear is
+left as it is, and the status area says so. **Re-check device timing** runs it again for everyone,
+e.g. after a phone switches to a Bluetooth speaker. The chirps are short blips over the music. The
+microphone is only open while a check runs (renderer/calibration.js, src/listenerCalibration.ts,
+packages/shared/calibration.ts).
 
 To remove the device:
 
