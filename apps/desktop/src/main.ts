@@ -8,12 +8,14 @@ import { AudioCapture, probeDevice } from "./audioCapture";
 import { Broadcaster, initialBroadcasterStatus, type BroadcasterStatus } from "./broadcaster";
 import { driverNeedsInstall, installDriver } from "./driverInstall";
 import { findLanAddress, lanJoinUrl } from "./lanUrl";
-import { LocalServer } from "./localServer";
+import { DEFAULT_LOCAL_PORT, LocalServer } from "./localServer";
 import { MenuBar } from "./tray";
 
 export interface Settings {
   /** Run the server and web app bundled with this app, instead of the wsUrl/webUrl below */
   hostLocally: boolean;
+  /** Port the bundled server listens on; fixed so join links keep working */
+  localPort: number;
   /** An external Beatsync server, used when not hosting locally */
   wsUrl: string;
   webUrl: string;
@@ -32,6 +34,7 @@ const settingsPath = () => path.join(app.getPath("userData"), "settings.json");
 const loadSettings = (): Settings => {
   const defaults: Settings = {
     hostLocally: true,
+    localPort: DEFAULT_LOCAL_PORT,
     wsUrl: "ws://localhost:8080/ws",
     webUrl: "http://localhost:3000",
     roomId: "",
@@ -76,12 +79,15 @@ let localServer: LocalServer;
  * Where the room lives: the server bundled with the app (started on first use, so nothing
  * listens on the network until it's needed), or the external one set under Advanced
  */
-const resolveUrls = async (s: Pick<Settings, "hostLocally" | "wsUrl" | "webUrl">) => {
+const resolveUrls = async (s: Pick<Settings, "hostLocally" | "localPort" | "wsUrl" | "webUrl">) => {
   if (!s.hostLocally) {
     localServer.stop();
     return { wsUrl: s.wsUrl, webUrl: s.webUrl };
   }
-  const port = await localServer.ensureRunning();
+  if (!Number.isInteger(s.localPort) || s.localPort < 1024 || s.localPort > 65535) {
+    throw new Error("Pick a port between 1024 and 65535 under Advanced");
+  }
+  const port = await localServer.ensureRunning(s.localPort);
   return { wsUrl: `ws://127.0.0.1:${port}/ws`, webUrl: `http://127.0.0.1:${port}` };
 };
 
@@ -310,7 +316,7 @@ app.whenReady().then(() => {
   );
   ipcMain.handle(
     "copy-lan-link",
-    async (_event, form: Pick<Settings, "hostLocally" | "wsUrl" | "webUrl" | "roomId">) => {
+    async (_event, form: Pick<Settings, "hostLocally" | "localPort" | "wsUrl" | "webUrl" | "roomId">) => {
       if (!/^\d{6}$/.test(form.roomId)) return { ok: false, message: "Enter a 6-digit room code first" };
       let webUrl: string;
       try {

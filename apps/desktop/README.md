@@ -22,11 +22,15 @@ receivers schedule it the same way they schedule synchronized play/pause.
 
 The app has the Beatsync server and web app built in. With **Advanced → Host the room on this
 Mac** on (the default), starting a stream (or clicking **Copy LAN join link**) starts that server
-on port 8090, or on a free port if 8090 is taken. It serves the web app and the room's API and
-WebSocket from that one port on every network interface. Phones on the same Wi-Fi only need the
-LAN join link, e.g. `http://192.168.1.20:8090/room/123456`. No repo, no `bun dev`. The first time
-a phone connects, macOS may ask whether Beatsync Speaker can accept incoming connections. Allow
-it. The server stops when you quit the app.
+on port 8095 (**Advanced → Port**). It serves the web app and the room's API and WebSocket from
+that one port on every network interface. Phones on the same Wi-Fi only need the LAN join link,
+e.g. `http://192.168.1.20:8095/room/123456`. The port never changes by itself, so a speaker can
+reuse that link. An open page reconnects if the app hosts the room again within about two minutes;
+after that, reload it. If another app holds the port, the app says so instead of moving to another
+port, because existing links would then point at nothing. The link also contains the Mac's Wi-Fi
+address. To keep that from changing, give the Mac a DHCP reservation on your router. No repo, no
+`bun dev`. The first time a phone connects, macOS may ask whether Beatsync Speaker can accept
+incoming connections. Allow it. The server stops when you quit the app.
 
 The hosted server keeps rooms in memory and has no storage bucket, so uploading tracks doesn't
 work in a hosted room. The live stream from the Mac does. Its log is at
@@ -165,7 +169,7 @@ apps ──► "Beatsync" output device (driver/BeatsyncDriver.c, runs in coreau
   has one prerendered room page; the server (`apps/server/src/routes/static.ts`, on when
   `STATIC_DIR` is set) serves it for every `/room/<id>`, and the page reads the room code from the
   URL. With no API URL baked in, the web app talks to whatever origin served it.
-- **`src/localServer.ts`**: picks the port, runs `beatsync-server` with a clean environment (no S3
+- **`src/localServer.ts`**: checks the fixed port is free, runs `beatsync-server` with a clean environment (no S3
   keys, so state backups are off), and waits for `/health`. The server exits when its stdin
   closes, so it doesn't outlive the app even after a crash.
 
@@ -175,7 +179,8 @@ apps ──► "Beatsync" output device (driver/BeatsyncDriver.c, runs in coreau
 | ---------------------------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------- |
 | Switch this Mac's output to Beatsync while streaming | on                       | Off: pick Beatsync yourself, system-wide or per app                                                        |
 | Buffer                                               | 400 ms                   | Delay between playing on the Mac and hearing it in the room. Raise it if devices stutter on a busy network |
-| Host the room on this Mac                            | on                       | Runs the bundled server and web app (port 8090, or a free one)                                             |
+| Host the room on this Mac                            | on                       | Runs the bundled server and web app                                                                        |
+| Port                                                 | 8095                     | The hosted room's port. It's in every join link, so keep it fixed                                          |
 | Server WebSocket URL                                 | `ws://localhost:8080/ws` | External server, when not hosting the room                                                                 |
 | Web app URL                                          | `http://localhost:3000`  | External web app, used by "Open room in browser" and the LAN link when not hosting                         |
 

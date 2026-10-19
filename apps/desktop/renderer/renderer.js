@@ -21,6 +21,7 @@ const readForm = () => ({
   playOnMac: $("playOnMac").checked,
   latencyMs: Number($("latencyMs").value),
   hostLocally: $("hostLocally").checked,
+  localPort: Number($("localPort").value),
   wsUrl: $("wsUrl").value.trim(),
   webUrl: $("webUrl").value.trim(),
 });
@@ -32,6 +33,7 @@ const fillForm = (s) => {
   $("playOnMac").checked = s.playOnMac;
   $("latencyMs").value = String(s.latencyMs);
   $("hostLocally").checked = s.hostLocally;
+  $("localPort").value = String(s.localPort);
   $("wsUrl").value = s.wsUrl;
   $("webUrl").value = s.webUrl;
   updateLatency();
@@ -45,6 +47,8 @@ const updateExternal = () => {
     $(id).disabled = running || !external;
     $(id).required = external;
   }
+  $("localPort").disabled = running || external;
+  $("localPort").required = !external;
 };
 $("hostLocally").addEventListener("change", updateExternal);
 
@@ -162,8 +166,8 @@ $("openRoom").addEventListener("click", () => api.openRoom());
 
 let lanResultTimer;
 $("copyLan").addEventListener("click", async () => {
-  const { roomId, hostLocally, wsUrl, webUrl } = readForm();
-  const result = await api.copyLanLink({ roomId, hostLocally, wsUrl, webUrl });
+  const { roomId, hostLocally, localPort, wsUrl, webUrl } = readForm();
+  const result = await api.copyLanLink({ roomId, hostLocally, localPort, wsUrl, webUrl });
   const el = $("lanResult");
   el.textContent = result.ok ? `Copied ${result.url}` : result.message;
   el.classList.toggle("error", !result.ok);

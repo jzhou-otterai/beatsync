@@ -74,6 +74,7 @@ small {
 }
 input:not([type]),
 input[type="url"],
+input[type="number"],
 input[inputmode] {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -283,6 +284,7 @@ button:disabled {
   opacity: 0.4;
 }
 /* External server fields, unused while hosting the room on this Mac */
-label.external:has(input:disabled) {
+label.external:has(input:disabled),
+label.hosted:has(input:disabled) {
   opacity: 0.45;
 }

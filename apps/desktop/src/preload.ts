@@ -13,7 +13,7 @@ contextBridge.exposeInMainWorld("beatsync", {
   onDevice: (cb: (status: unknown) => void) => ipcRenderer.on("device", (_e, status) => cb(status)),
   openSoundSettings: () => ipcRenderer.invoke("open-sound-settings"),
   onNote: (cb: (note: unknown) => void) => ipcRenderer.on("note", (_e, note) => cb(note)),
-  copyLanLink: (form: { roomId: string; hostLocally: boolean; wsUrl: string; webUrl: string }) =>
+  copyLanLink: (form: { roomId: string; hostLocally: boolean; localPort: number; wsUrl: string; webUrl: string }) =>
     ipcRenderer.invoke("copy-lan-link", form),
   onStatus: (cb: (status: unknown) => void) => ipcRenderer.on("status", (_e, status) => cb(status)),
   onLevel: (cb: (level: number) => void) => ipcRenderer.on("level", (_e, level: number) => cb(level)),

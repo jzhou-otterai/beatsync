@@ -74,6 +74,11 @@
               >
             </span>
           </label>
+          <label class="hosted">
+            <span>Port</span>
+            <input id="localPort" type="number" inputmode="numeric" min="1024" max="65535" required />
+            <small>Join links include it, so keep it the same; speakers' saved links then keep working</small>
+          </label>
           <label class="external">
             <span>Server WebSocket URL</span>
             <input id="wsUrl" type="url" required />

@@ -3,7 +3,12 @@ import { createWriteStream, mkdirSync } from "node:fs";
 import { createServer } from "node:net";
 import path from "node:path";
 
-export const DEFAULT_LOCAL_PORT = 8090;
+/**
+ * Fixed, so a join link opened on a speaker keeps working every time the app hosts the
+ * room. Clear of this repo's dev ports (3000 web, 8080/8090 server), so it doesn't collide
+ * with `bun dev`.
+ */
+export const DEFAULT_LOCAL_PORT = 8095;
 
 /** Whether `port` can be bound on `host` right now */
 const canListen = (port: number, host: string): Promise<boolean> =>
@@ -13,24 +18,13 @@ const canListen = (port: number, host: string): Promise<boolean> =>
     server.listen({ port, host, exclusive: true }, () => server.close(() => resolve(true)));
   });
 
-/** A port the OS says is free */
-const randomFreePort = (): Promise<number> =>
-  new Promise((resolve, reject) => {
-    const server = createServer();
-    server.once("error", reject);
-    server.listen({ port: 0, host: "0.0.0.0" }, () => {
-      const { port } = server.address() as { port: number };
-      server.close(() => resolve(port));
-    });
-  });
-
 /**
- * `preferred` if nothing listens on it, else a random free port. Checks loopback too:
- * macOS lets a 0.0.0.0 listener coexist with another process's 127.0.0.1 one on the
- * same port, and then this Mac's own connections would reach the other process.
+ * Whether nothing else listens on `port`. Checks loopback too: macOS lets a 0.0.0.0
+ * listener coexist with another process's 127.0.0.1 one on the same port, and then this
+ * Mac's own connections would reach the other process.
  */
-export const pickPort = async (preferred: number): Promise<number> =>
-  (await canListen(preferred, "0.0.0.0")) && (await canListen(preferred, "127.0.0.1")) ? preferred : randomFreePort();
+export const isPortFree = async (port: number): Promise<boolean> =>
+  (await canListen(port, "0.0.0.0")) && (await canListen(port, "127.0.0.1"));
 
 const isHealthy = async (port: number) => {
   try {
@@ -49,7 +43,6 @@ export interface LocalServerOptions {
   /** Working directory; also where server.log goes */
   dataDir: string;
   logDir: string;
-  preferredPort?: number;
 }
 
 /**
@@ -69,18 +62,28 @@ export class LocalServer {
     return this.proc ? this.port : null;
   }
 
-  /** Start the server unless it's already running; resolves with its port */
-  ensureRunning(): Promise<number> {
-    if (this.proc && this.port !== null) return Promise.resolve(this.port);
-    this.starting ??= this.start().finally(() => {
+  /**
+   * Start the server on `port` unless it's already running there (restarting it if the
+   * port changed); resolves with the port. Never falls back to another port: links
+   * already handed out would silently point at nothing, or at a different server.
+   */
+  async ensureRunning(port: number): Promise<number> {
+    if (this.starting) await this.starting.catch(() => {});
+    if (this.proc && this.port === port) return port;
+    this.stop();
+    this.starting = this.start(port).finally(() => {
       this.starting = null;
     });
     return this.starting;
   }
 
-  private async start(): Promise<number> {
-    const { binPath, webDir, dataDir, logDir, preferredPort = DEFAULT_LOCAL_PORT } = this.options;
-    const port = await pickPort(preferredPort);
+  private async start(port: number): Promise<number> {
+    const { binPath, webDir, dataDir, logDir } = this.options;
+    if (!(await isPortFree(port))) {
+      throw new Error(
+        `Port ${port} is already in use by another app, so the room can't be hosted on it. Quit that app, or pick another port under Advanced.`
+      );
+    }
 
     mkdirSync(logDir, { recursive: true });
     mkdirSync(dataDir, { recursive: true });
