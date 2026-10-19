@@ -677,8 +677,10 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
         set({ hasUserStartedSystem: true });
 
         try {
-          await audioContextManager.resume();
-          console.log("AudioContext resumed via user gesture");
+          // Without a user gesture (AUTO_START), the browser may hold resume() pending until
+          // the first tap; don't let that hold up joining the room's playback
+          await Promise.race([audioContextManager.resume(), new Promise((r) => setTimeout(r, 1000))]);
+          console.log("AudioContext resume requested");
         } catch (err) {
           console.warn("Failed to resume AudioContext", err);
         }

@@ -75,8 +75,13 @@ this Mac included. It's the same room-wide volume as the web app's slider, so th
 Changing it needs playback control in the room (admin, or a room open to everyone). The Mac's own
 volume keys then work on top of it, for the Mac only.
 
-Open the same room on your other devices and click **Start System**. Instead of the track
-player, they show a "Live from …" banner. **Copy LAN join link** puts a link to the room on the
+Open the same room on your other devices. In a room the app hosts, they start playing as soon
+as their clock is synced. There's no **Start System** click. Browsers only allow audio after the
+page gets a tap or key press, though (always on iPhone; on other browsers for a site that hasn't
+played media before). Until then, the page shows "Tap anywhere to turn on sound". For a fully
+hands-free speaker, such as a spare laptop, run Chrome with
+`--autoplay-policy=no-user-gesture-required`. With an external server, listeners click **Start
+System** as before. Instead of the track player, they show a "Live from …" banner. **Copy LAN join link** puts a link to the room on the
 clipboard, with the Mac's Wi-Fi address in place of `localhost`. When hosting the room, the status
 area shows that link too. With an external dev setup (`http://localhost:3000`), the web client
 also swaps `localhost` in its server URL, so phones reach the server on the Mac.

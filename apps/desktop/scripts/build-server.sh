@@ -21,8 +21,9 @@ codesign --force --sign - "$SERVER_OUT"
 echo "Built bin/beatsync-server"
 
 # Empty API/WS URLs override apps/client/.env*: the export derives them from the page's
-# own origin (apps/client/src/lib/urls.ts). No analytics from a LAN-only copy.
-(cd "$ROOT/apps/client" && rm -rf out && BEATSYNC_STATIC_EXPORT=1 \
+# own origin (apps/client/src/lib/urls.ts). No analytics from a LAN-only copy. Listeners
+# start playing as soon as they open the link, without a "Start System" click.
+(cd "$ROOT/apps/client" && rm -rf out && BEATSYNC_STATIC_EXPORT=1 NEXT_PUBLIC_AUTO_START=1 \
   NEXT_PUBLIC_API_URL= NEXT_PUBLIC_WS_URL= NEXT_PUBLIC_POSTHOG_KEY= bunx next build)
 rm -rf build/web
 cp -R "$ROOT/apps/client/out" build/web
