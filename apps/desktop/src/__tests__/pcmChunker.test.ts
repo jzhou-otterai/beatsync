@@ -56,4 +56,22 @@ describe("PcmChunker", () => {
     expect(after.playAtServerTime - first.playAtServerTime).toBeGreaterThan(29_000);
     expect(after.seq).toBe(first.seq + 1);
   });
+
+  // A Bluetooth listener raises the buffer mid-stream: frames from then on must be
+  // stamped that much later, or that listener keeps getting audio too late to play
+  it("moves timestamps by the change when the buffer changes mid-stream", () => {
+    const clock = { now: 1_000_000 };
+    const chunker = makeChunker(clock);
+    const playAt = () => {
+      clock.now += 20;
+      return decodeLiveAudioFrame(chunker.push(pcm(CHUNK_FRAMES))[0])!.playAtServerTime;
+    };
+
+    playAt();
+    const before = playAt();
+    chunker.setLatency(650);
+    const after = playAt();
+
+    expect(after - before).toBeCloseTo(20 + 250, 0);
+  });
 });

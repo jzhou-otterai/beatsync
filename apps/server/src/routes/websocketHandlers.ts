@@ -199,12 +199,14 @@ export const handleMessage = async (ws: ServerWebSocket<WSData>, message: string
       };
 
       if (room) {
-        room.processNTPRequestFrom({
+        const compensationChanged = room.processNTPRequestFrom({
           clientId: ws.data.clientId,
           clientRTT: msg.clientRTT,
           clientCompensationMs: msg.clientCompensationMs,
           clientNudgeMs: msg.clientNudgeMs,
         });
+        // A live stream's broadcaster sizes its buffer from everyone's compensation
+        if (compensationChanged && !IS_DEMO_MODE) debouncedClientChangeBroadcast(server, roomId);
       }
 
       // Capture t2 as late as possible — right before send

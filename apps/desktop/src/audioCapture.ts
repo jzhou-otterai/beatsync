@@ -119,6 +119,11 @@ export class AudioCapture {
     if (this.proc?.stdin.writable) this.proc.stdin.write(`room-volume ${volume}\n`);
   }
 
+  /** New delay for the copy playing on this Mac, to match a changed room buffer */
+  setDelay(delayMs: number): void {
+    if (this.proc?.stdin.writable) this.proc.stdin.write(`delay-ms ${Math.round(delayMs)}\n`);
+  }
+
   stop(): void {
     if (!this.proc) return;
     const proc = this.proc;

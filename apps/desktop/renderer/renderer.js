@@ -90,7 +90,7 @@ const renderStatus = (status) => {
 
   if (status.phase === "idle") {
     setRunning(false);
-    Object.assign(notes, { hosting: null, routedFrom: null, monitoring: null, warning: null });
+    Object.assign(notes, { hosting: null, buffer: null, routedFrom: null, monitoring: null, warning: null });
     $("notes").textContent = "";
   } else if (!running) {
     // Started from the menu bar
@@ -136,11 +136,15 @@ $("recheckDevice").addEventListener("click", checkDevice);
 api.onDevice(renderDevice);
 $("openSound").addEventListener("click", () => api.openSoundSettings());
 // What the helper did with the Mac's own audio while starting
-const notes = { hosting: null, routedFrom: null, monitoring: null, warning: null };
+const notes = { hosting: null, buffer: null, routedFrom: null, monitoring: null, warning: null };
 api.onNote((note) => {
   Object.assign(notes, note);
   const parts = [];
   if (notes.hosting) parts.push(`Hosting the room on this Mac: ${notes.hosting}`);
+  if (notes.buffer)
+    parts.push(
+      `Buffer raised to ${notes.buffer.ms} ms: a listener plays ${notes.buffer.listenerMs} ms early for Bluetooth.`
+    );
   if (notes.routedFrom)
     parts.push(`Mac output switched to Beatsync (was ${notes.routedFrom}); it switches back when you stop.`);
   if (notes.monitoring)

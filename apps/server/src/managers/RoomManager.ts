@@ -76,6 +76,9 @@ export const ServerBackupSchema = z.object({
 export type ServerBackupType = z.infer<typeof ServerBackupSchema>;
 
 // Default/initial playback state for rooms
+/** Compensation changes smaller than this are measurement noise, not worth a broadcast */
+const COMPENSATION_CHANGE_NOTIFY_MS = 10;
+
 const INITIAL_PLAYBACK_STATE: RoomPlaybackState = {
   type: "paused",
   audioSource: "",
@@ -672,17 +675,19 @@ export class RoomManager {
   }
 
   /**
-   * Receive an NTP request from a client
+   * Receive an NTP request from a client. Returns whether the client's compensation
+   * changed enough for the room to hear about it (e.g. a Bluetooth delay turned on, which
+   * a live stream's broadcaster makes room for in its buffer).
    */
   processNTPRequestFrom(data: {
     clientId: string;
     clientRTT?: number;
     clientCompensationMs?: number;
     clientNudgeMs?: number;
-  }): void {
+  }): boolean {
     const { clientId, clientRTT, clientCompensationMs, clientNudgeMs } = data;
     const client = this.clientData.get(clientId);
-    if (!client) return;
+    if (!client) return false;
     client.lastNtpResponse = Date.now();
 
     // Log first NTP probe per client (confirms probes are flowing)
@@ -701,8 +706,11 @@ export class RoomManager {
           : clientRTT; // First measurement
     }
 
-    // Store client's total local compensation (outputLatency + nudge)
-    if (clientCompensationMs !== undefined && clientCompensationMs > 0) {
+    // Store client's total local compensation (outputLatency + nudge). 0 counts too, so
+    // turning a Bluetooth delay off lowers it again
+    let compensationChanged = false;
+    if (clientCompensationMs !== undefined && clientCompensationMs >= 0) {
+      compensationChanged = Math.abs(clientCompensationMs - client.compensationMs) >= COMPENSATION_CHANGE_NOTIFY_MS;
       client.compensationMs = clientCompensationMs;
     }
 
@@ -712,6 +720,7 @@ export class RoomManager {
     }
 
     this.clientData.set(clientId, client);
+    return compensationChanged;
   }
 
   /**

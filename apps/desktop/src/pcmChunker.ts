@@ -39,6 +39,15 @@ export class PcmChunker {
     this.chunkFrames = opts.chunkFrames ?? LIVE_STREAM_CONSTANTS.CHUNK_FRAMES;
   }
 
+  /**
+   * Change the buffer mid-stream. Re-anchors, so listeners resync once (a short gap or
+   * skip) and then play the same stream with the new lead.
+   */
+  setLatency(latencyMs: number): void {
+    this.opts.latencyMs = latencyMs;
+    this.anchorServerTime = null;
+  }
+
   /** Feed raw PCM; returns encoded frames ready to send */
   push(data: Buffer): Uint8Array<ArrayBuffer>[] {
     this.pending = this.pending.length ? Buffer.concat([this.pending, data]) : data;

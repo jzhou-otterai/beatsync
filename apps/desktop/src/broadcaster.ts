@@ -32,6 +32,8 @@ export interface BroadcasterStatus {
   /** Whether this client may change room settings like the volume */
   canControl: boolean;
   listeners: number;
+  /** Largest output compensation (Bluetooth delay + nudge) among the listeners */
+  maxListenerCompensationMs: number;
   framesSent: number;
   framesDropped: number;
   reanchors: number;
@@ -47,6 +49,7 @@ export const initialBroadcasterStatus = (): BroadcasterStatus => ({
   globalVolume: 1,
   canControl: false,
   listeners: 0,
+  maxListenerCompensationMs: 0,
   framesSent: 0,
   framesDropped: 0,
   reanchors: 0,
@@ -61,6 +64,8 @@ export interface BroadcasterOptions {
   onStatus: (status: BroadcasterStatus) => void;
   /** The room volume changed (from this app, the web app, or on joining) */
   onGlobalVolume?: (volume: number) => void;
+  /** A listener's output compensation changed the largest one in the room */
+  onListenerCompensation?: (maxMs: number) => void;
 }
 
 /**
@@ -145,6 +150,12 @@ export class Broadcaster {
   startStream(format: CaptureFormat, latencyMs: number, sourceName: string): void {
     this.pendingStart = { format, latencyMs, sourceName };
     if (this.clock.isSynced) this.sendStart();
+  }
+
+  /** Change the buffer of the stream that's running (or about to start) */
+  setLatency(latencyMs: number): void {
+    if (this.pendingStart) this.pendingStart.latencyMs = latencyMs;
+    this.chunker?.setLatency(latencyMs);
   }
 
   stopStream(): void {
@@ -243,11 +254,18 @@ export class Broadcaster {
         if (event.type === "CLIENT_CHANGE") {
           const self = event.clients.find((c) => c.clientId === this.opts.clientId);
           const isAdmin = self?.isAdmin ?? false;
+          const maxListenerCompensationMs = Math.max(
+            0,
+            ...event.clients.filter((c) => c.clientId !== this.opts.clientId).map((c) => c.compensationMs)
+          );
+          const compensationChanged = maxListenerCompensationMs !== this.status.maxListenerCompensationMs;
           this.update({
             isAdmin,
             canControl: isAdmin || this.permissions === "EVERYONE",
             listeners: Math.max(0, event.clients.length - 1),
+            maxListenerCompensationMs,
           });
+          if (compensationChanged) this.opts.onListenerCompensation?.(maxListenerCompensationMs);
         } else if (event.type === "SET_PLAYBACK_CONTROLS") {
           this.permissions = event.permissions;
           this.update({ canControl: this.status.isAdmin || event.permissions === "EVERYONE" });

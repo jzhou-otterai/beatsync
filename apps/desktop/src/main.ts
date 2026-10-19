@@ -6,6 +6,7 @@ import { hostname, networkInterfaces } from "node:os";
 import path from "node:path";
 import { AudioCapture, probeDevice } from "./audioCapture";
 import { Broadcaster, initialBroadcasterStatus, type BroadcasterStatus } from "./broadcaster";
+import { effectiveBufferMs, MIN_BUFFER_CHANGE_MS } from "./bufferSizing";
 import { driverNeedsInstall, installDriver } from "./driverInstall";
 import { findLanAddress, lanJoinUrl } from "./lanUrl";
 import { DEFAULT_LOCAL_PORT, LocalServer } from "./localServer";
@@ -187,6 +188,9 @@ const start = async (next: Omit<Settings, "clientId">) => {
     return;
   }
 
+  // The buffer in use: the configured one, raised while a listener needs more lead
+  // (Bluetooth on a phone). The Mac's own copy is delayed by the same amount.
+  let bufferMs = settings.latencyMs;
   const b = new Broadcaster({
     wsUrl,
     roomId: settings.roomId,
@@ -195,6 +199,14 @@ const start = async (next: Omit<Settings, "clientId">) => {
     onStatus: sendStatus,
     // The room volume also sets how loud this Mac plays its local copy
     onGlobalVolume: (volume) => capture?.setRoomVolume(volume),
+    onListenerCompensation: (maxMs) => {
+      const next = effectiveBufferMs(settings.latencyMs, maxMs);
+      if (Math.abs(next - bufferMs) < MIN_BUFFER_CHANGE_MS) return;
+      bufferMs = next;
+      b.setLatency(next);
+      capture?.setDelay(next);
+      sendToAll("note", { buffer: next > settings.latencyMs ? { ms: next, listenerMs: maxMs } : null });
+    },
   });
   broadcaster = b;
   b.connect();
@@ -203,12 +215,12 @@ const start = async (next: Omit<Settings, "clientId">) => {
   capture = c;
   c.setRoomVolume(b.getStatus().globalVolume);
   c.start(
-    { routeOutput: settings.routeOutput, playOnMac: settings.playOnMac, delayMs: settings.latencyMs },
+    { routeOutput: settings.routeOutput, playOnMac: settings.playOnMac, delayMs: bufferMs },
     {
       onFormat: (format) => {
         // A format change mid-stream (e.g. sample rate changed in Audio MIDI Setup) needs a fresh stream
         b.stopStream();
-        b.startStream(format, settings.latencyMs, "Mac");
+        b.startStream(format, bufferMs, "Mac");
       },
       onData: (pcm) => {
         peakLevel = Math.max(peakLevel, peakOf(pcm));
