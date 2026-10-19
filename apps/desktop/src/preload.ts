@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld("beatsync", {
   showMain: () => ipcRenderer.invoke("show-main"),
   openRoom: () => ipcRenderer.invoke("open-room"),
   setRoomVolume: (volume: number) => ipcRenderer.invoke("set-room-volume", volume),
+  setMacOffset: (ms: number) => ipcRenderer.invoke("set-mac-offset", ms),
   deviceStatus: () => ipcRenderer.invoke("device-status"),
   installDevice: () => ipcRenderer.invoke("install-device"),
   onDevice: (cb: (status: unknown) => void) => ipcRenderer.on("device", (_e, status) => cb(status)),

@@ -288,3 +288,15 @@ label.external:has(input:disabled),
 label.hosted:has(input:disabled) {
   opacity: 0.45;
 }
+.mac-timing {
+  gap: 4px;
+  padding-left: 23px;
+}
+.mac-timing input {
+  width: 100%;
+  accent-color: var(--accent);
+}
+.mac-timing output {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}

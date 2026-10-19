@@ -57,6 +57,12 @@
           </span>
         </label>
 
+        <label class="mac-timing">
+          <span>Mac timing <output id="macOffsetOut">0 ms</output></span>
+          <input id="macOffset" type="range" min="-250" max="250" step="5" value="0" />
+          <small>If the Mac sounds ahead of the phones, slide right (later); if behind, slide left. Applies live</small>
+        </label>
+
         <details>
           <summary>Advanced</summary>
           <label>
@@ -102,7 +108,9 @@
         <label class="room-volume">
           <span>Room volume <output id="roomVolumeOut">–</output></span>
           <input id="roomVolume" type="range" min="0" max="100" step="1" value="100" disabled />
-          <small id="roomVolumeHelp">Sets the volume on every device in the room, this Mac included</small>
+          <small id="roomVolumeHelp"
+            >Sets the volume on every other device in the room. This Mac follows its own volume keys</small
+          >
         </label>
         <dl id="stats">
           <div>

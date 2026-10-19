@@ -31,6 +31,8 @@ const fillForm = (s) => {
   $("username").value = s.username;
   $("routeOutput").checked = s.routeOutput;
   $("playOnMac").checked = s.playOnMac;
+  $("macOffset").value = String(s.macOffsetMs ?? 0);
+  renderMacOffset();
   $("latencyMs").value = String(s.latencyMs);
   $("hostLocally").checked = s.hostLocally;
   $("localPort").value = String(s.localPort);
@@ -193,7 +195,7 @@ const renderRoomVolume = (status) => {
   $("roomVolumeHelp").textContent =
     connected && !status.canControl
       ? "Only the room admin can change this (or make playback controls open to everyone)"
-      : "Sets the volume on every device in the room, this Mac included";
+      : "Sets the volume on every other device in the room. This Mac follows its own volume keys";
 };
 
 roomVolume.addEventListener("input", () => {
@@ -209,6 +211,19 @@ roomVolume.addEventListener("input", () => {
 roomVolume.addEventListener("change", () => {
   draggingVolume = false;
   api.setRoomVolume(Number(roomVolume.value) / 100);
+});
+
+// Mac timing: live fine-tuning of the Mac's local copy against the room
+const renderMacOffset = () => {
+  const ms = Number($("macOffset").value);
+  $("macOffsetOut").textContent = ms === 0 ? "0 ms" : `${ms > 0 ? "+" : ""}${ms} ms (${ms > 0 ? "later" : "earlier"})`;
+};
+$("macOffset").addEventListener("input", () => {
+  renderMacOffset();
+  api.setMacOffset(Number($("macOffset").value));
+});
+$("playOnMac").addEventListener("change", () => {
+  $("macOffset").disabled = !$("playOnMac").checked;
 });
 
 api.onStatus(renderStatus);
