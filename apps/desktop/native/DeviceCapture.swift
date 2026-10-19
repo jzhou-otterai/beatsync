@@ -55,8 +55,8 @@ func getProperty<T>(_ objectID: AudioObjectID, _ selector: AudioObjectPropertySe
     return withUnsafeMutablePointer(to: &value) { AudioObjectGetPropertyData(objectID, &addr, 0, nil, &size, $0) }
 }
 
-func setProperty<T>(_ objectID: AudioObjectID, _ selector: AudioObjectPropertySelector, _ value: T) -> OSStatus {
-    var addr = address(selector)
+func setProperty<T>(_ objectID: AudioObjectID, _ selector: AudioObjectPropertySelector, _ value: T, scope: AudioObjectPropertyScope = kAudioObjectPropertyScopeGlobal, element: AudioObjectPropertyElement = kAudioObjectPropertyElementMain) -> OSStatus {
+    var addr = AudioObjectPropertyAddress(mSelector: selector, mScope: scope, mElement: element)
     var v = value
     return withUnsafePointer(to: &v) { AudioObjectSetPropertyData(objectID, &addr, 0, nil, UInt32(MemoryLayout<T>.size), $0) }
 }
@@ -347,23 +347,68 @@ guard status == noErr else {
 }
 
 // The Mac's volume keys / Sound menu act on the Beatsync device (it's the default
-// output). Mirror those controls onto the local copy only.
-func localGain() -> Float {
+// output). They should feel exactly like the speakers' own volume, so instead of
+// scaling audio in software (which would be capped by whatever the speakers are set
+// to, on a different curve), Beatsync's volume drives the speakers' hardware volume
+// control. Mute and the room volume still apply in software to the local copy only.
+
+/// Elements carrying the speakers' volume: the master control, or else each channel
+func volumeElements(_ device: AudioObjectID) -> [AudioObjectPropertyElement] {
+    for candidates in [[kAudioObjectPropertyElementMain], [1, 2]] as [[AudioObjectPropertyElement]] {
+        let settable = candidates.allSatisfy { element in
+            var addr = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyVolumeScalar, mScope: kAudioObjectPropertyScopeOutput, mElement: element)
+            var isSettable: DarwinBoolean = false
+            return AudioObjectHasProperty(device, &addr) && AudioObjectIsPropertySettable(device, &addr, &isSettable) == noErr && isSettable.boolValue
+        }
+        if settable { return candidates }
+    }
+    return []
+}
+
+func readVolume(_ device: AudioObjectID, element: AudioObjectPropertyElement) -> Float32? {
+    var addr = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyVolumeScalar, mScope: kAudioObjectPropertyScopeOutput, mElement: element)
+    var value: Float32 = 0
+    var size = UInt32(MemoryLayout<Float32>.size)
+    return AudioObjectGetPropertyData(device, &addr, 0, nil, &size, &value) == noErr ? value : nil
+}
+
+let speakerVolumeElements = monitorDevice.map(volumeElements) ?? []
+
+func beatsyncVolume() -> Float32 {
     var scalar: Float32 = 1
-    var muted: UInt32 = 0
     _ = getProperty(deviceID, kAudioDevicePropertyVolumeScalar, &scalar, scope: kAudioObjectPropertyScopeOutput)
+    return scalar
+}
+
+func beatsyncMuted() -> Bool {
+    var muted: UInt32 = 0
     _ = getProperty(deviceID, kAudioDevicePropertyMute, &muted, scope: kAudioObjectPropertyScopeOutput)
-    return muted != 0 ? 0 : scalar * scalar // same curve as the driver's dB mapping
+    return muted != 0
 }
 
 // Room-wide volume from the app (stdin); listeners apply it too, so the Mac follows it
 var roomVolume: Float = 1
 
 func updateLocalGain() {
-    delayLine?.setGain(localGain() * roomVolume)
+    guard let delayLine else { return }
+    let volume = beatsyncVolume()
+    if let monitorDevice, !speakerVolumeElements.isEmpty {
+        // Full native range: Beatsync at 100% is the speakers at 100%
+        for element in speakerVolumeElements {
+            _ = setProperty(monitorDevice, kAudioDevicePropertyVolumeScalar, volume, scope: kAudioObjectPropertyScopeOutput, element: element)
+        }
+        delayLine.setGain(beatsyncMuted() ? 0 : roomVolume)
+    } else {
+        // Speakers without a settable volume: scale in software (driver's dB curve)
+        delayLine.setGain(beatsyncMuted() ? 0 : volume * volume * roomVolume)
+    }
 }
 
-if delayLine != nil {
+if let monitorDevice, delayLine != nil {
+    // Start from where the speakers already are, so nothing jumps when streaming starts
+    if let current = speakerVolumeElements.first.flatMap({ readVolume(monitorDevice, element: $0) }) {
+        _ = setProperty(deviceID, kAudioDevicePropertyVolumeScalar, current, scope: kAudioObjectPropertyScopeOutput)
+    }
     updateLocalGain()
     for selector in [kAudioDevicePropertyVolumeScalar, kAudioDevicePropertyMute] {
         var controlAddress = address(selector, kAudioObjectPropertyScopeOutput)

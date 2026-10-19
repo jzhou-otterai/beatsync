@@ -46,7 +46,9 @@ choose Beatsync yourself, either system-wide in Sound settings or just in one ap
 
 **Volume.** The Beatsync device has its own volume and mute controls, so the Mac's volume keys
 and the Sound menu slider work while it's the output. They set how loud **this Mac** plays, and
-they don't change the room. Listeners always get full-level audio and set their own volume on their
+they don't change the room. Beatsync's volume drives the speakers' own hardware volume, so the
+keys have the Mac's native range and curve. Streaming starts at the speakers' current level, and
+they keep your last setting when you stop. Listeners always get full-level audio and set their own volume on their
 device or with the room's volume slider.
 
 **Room volume.** The slider under the stream status sets the volume on every device in the room,
