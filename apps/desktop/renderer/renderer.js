@@ -13,6 +13,55 @@ const PHASE_LABELS = {
 
 let running = false;
 let lastPhase = "idle";
+// The last phase before an error, so the stepper can show which step failed
+let lastGoodPhase = "idle";
+
+const visualizer = /** @type {any} */ (window).createVisualizer(document.getElementById("viz"));
+
+// Connect → Sync clocks → Live
+const STEP_FOR_PHASE = { idle: -1, connecting: 0, syncing: 1, ready: 2, live: 2 };
+
+const renderSync = (status) => {
+  const phase = status.phase;
+  if (phase !== "error") lastGoodPhase = phase;
+  const active = STEP_FOR_PHASE[phase === "error" ? lastGoodPhase : phase] ?? -1;
+
+  for (const li of document.querySelectorAll("#steps [data-step]")) {
+    const step = Number(/** @type {HTMLElement} */ (li).dataset.step);
+    li.className =
+      step < active
+        ? "done"
+        : step === active
+          ? phase === "error"
+            ? "failed"
+            : phase === "live"
+              ? "done live"
+              : "active"
+          : "";
+  }
+  for (const [i, line] of [...document.querySelectorAll("#steps .step-line")].entries()) {
+    line.classList.toggle("done", i < active || (phase === "live" && i < 2));
+  }
+
+  const n = Math.min(status.ntpMeasurements, status.ntpTarget);
+  const detail = {
+    idle: "Start streaming to sync this Mac's clock with the room.",
+    connecting: "Connecting to the room…",
+    syncing: `Syncing clocks with the room: ${n} of ${status.ntpTarget} clean samples`,
+    ready: `Clocks in sync to within ±${(status.rttMs / 2).toFixed(1)} ms. Play something on the Mac to go live`,
+    live: `In sync · clock offset ${status.offsetMs.toFixed(1)} ms · round trip ${status.rttMs.toFixed(1)} ms`,
+    error: "",
+  }[phase];
+  $("syncDetail").textContent = detail ?? "";
+  $("syncDetail").classList.toggle("in-sync", phase === "ready" || phase === "live");
+
+  // Progress bar only while the clocks are syncing
+  $("syncProgress").hidden = phase !== "syncing";
+  /** @type {HTMLElement} */ (document.getElementById("syncBar")).style.width =
+    `${(n / Math.max(1, status.ntpTarget)) * 100}%`;
+
+  visualizer.setStatus(status);
+};
 
 const readForm = () => ({
   roomId: $("roomId").value.trim(),
@@ -71,6 +120,7 @@ const setRunning = (value) => {
 
 const renderStatus = (status) => {
   $("dot").className = `dot ${status.phase}`;
+  renderSync(status);
   renderRoomVolume(status);
   let label = PHASE_LABELS[status.phase] ?? status.phase;
   if (status.phase === "live") label = `Live to ${status.listeners} device${status.listeners === 1 ? "" : "s"}`;
@@ -109,6 +159,7 @@ const renderStatus = (status) => {
   // Install and Microphone permission both happen while starting; show where they ended up
   if (status.phase === "live" && lastPhase !== "live") checkDevice();
   lastPhase = status.phase;
+  renderSyncMap();
 };
 
 $("latencyMs").addEventListener("input", updateLatency);
@@ -244,10 +295,50 @@ $("playOnMac").addEventListener("change", () => {
 });
 
 api.onStatus(renderStatus);
-api.onLevel((level) => {
-  // Perceptual-ish scaling so quiet audio still moves the meter
-  const pct = Math.min(100, Math.sqrt(level) * 100);
-  /** @type {HTMLElement} */ (document.getElementById("level")).style.width = `${pct}%`;
+// Every other device and how in sync it is: the target above, and a row each below
+const SYNC_TEXT = {
+  verified: (l) =>
+    `In sync by ear · ${l.timing.errorMs > 0 ? "+" : l.timing.errorMs < 0 ? "−" : "±"}${Math.abs(l.timing.errorMs)} ms`,
+  measuring: (l) => `Checking by ear… (round ${l.timing.round})`,
+  corrected: (l) => `Corrected by ${Math.abs(l.timing.errorMs)} ms · re-check pending`,
+  estimated: (l) =>
+    l.timing?.state === "queued"
+      ? "Clock-synced · waiting to be checked by ear"
+      : `Clock-synced · within ~${Math.max(1, Math.round(l.rttMs / 2))} ms (not checked by ear)`,
+  problem: (l) =>
+    l.timing?.state === "not-heard"
+      ? "Couldn't be heard: headphones, muted or out of earshot?"
+      : `Check failed: ${l.timing?.message ?? "unknown error"}`,
+};
+let syncMap = [];
+const renderSyncMap = () => {
+  const connected = ["ready", "live"].includes(lastPhase);
+  const list = connected ? syncMap : [];
+  visualizer.setListeners(list);
+  $("roomSync").textContent = connected ? /** @type {any} */ (window).summarizeRoomSync(list) : "";
+  const ul = /** @type {HTMLElement} */ (document.getElementById("deviceList"));
+  ul.replaceChildren(
+    ...list.map((l) => {
+      const kind = /** @type {any} */ (window).describeListenerSync(l).kind;
+      const li = document.createElement("li");
+      li.className = kind;
+      const dot = document.createElement("span");
+      dot.className = "sync-dot";
+      dot.textContent = (l.username.trim()[0] ?? "?").toUpperCase();
+      const name = document.createElement("span");
+      name.className = "device-name";
+      name.textContent = l.username;
+      const state = document.createElement("span");
+      state.className = "device-state";
+      state.textContent = SYNC_TEXT[kind](l);
+      li.append(dot, name, state);
+      return li;
+    })
+  );
+};
+api.onSyncMap((list) => {
+  syncMap = list;
+  renderSyncMap();
 });
 
 checkDevice();

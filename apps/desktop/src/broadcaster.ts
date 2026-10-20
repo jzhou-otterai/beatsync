@@ -6,7 +6,7 @@ import {
   type PlaybackControlsPermissionsType,
   type WSRequestType,
 } from "@beatsync/shared";
-import { ServerClock } from "./clock";
+import { ServerClock, SYNC_MEASUREMENTS } from "./clock";
 import { PcmChunker } from "./pcmChunker";
 import type { CaptureFormat } from "./audioCapture";
 
@@ -26,6 +26,8 @@ export interface BroadcasterStatus {
   rttMs: number;
   offsetMs: number;
   ntpMeasurements: number;
+  /** Clean clock samples needed to count as synced (progress = ntpMeasurements / ntpTarget) */
+  ntpTarget: number;
   isAdmin: boolean;
   /** Room-wide volume (0-1) every listener applies; shared with the web app's volume slider */
   globalVolume: number;
@@ -40,11 +42,22 @@ export interface BroadcasterStatus {
   liveStream: LiveStreamInfoType | null;
 }
 
+/** Another device in the room, as the server last reported it */
+export interface ListenerInfo {
+  clientId: string;
+  username: string;
+  /** Its round trip to the server; its clock is synced to within about half of this */
+  rttMs: number;
+  /** Output delay it compensates for locally (output latency, Bluetooth, nudge) */
+  compensationMs: number;
+}
+
 export const initialBroadcasterStatus = (): BroadcasterStatus => ({
   phase: "idle",
   rttMs: 0,
   offsetMs: 0,
   ntpMeasurements: 0,
+  ntpTarget: SYNC_MEASUREMENTS,
   isAdmin: false,
   globalVolume: 1,
   canControl: false,
@@ -67,7 +80,7 @@ export interface BroadcasterOptions {
   /** A listener's output compensation changed the largest one in the room */
   onListenerCompensation?: (maxMs: number) => void;
   /** Everyone in the room except this broadcaster, on every client change */
-  onListeners?: (listeners: { clientId: string; username: string }[]) => void;
+  onListeners?: (listeners: ListenerInfo[]) => void;
 }
 
 /**
@@ -291,7 +304,12 @@ export class Broadcaster {
           this.opts.onListeners?.(
             event.clients
               .filter((c) => c.clientId !== this.opts.clientId)
-              .map((c) => ({ clientId: c.clientId, username: c.username }))
+              .map((c) => ({
+                clientId: c.clientId,
+                username: c.username,
+                rttMs: c.rtt,
+                compensationMs: c.compensationMs,
+              }))
           );
         } else if (event.type === "SET_PLAYBACK_CONTROLS") {
           this.permissions = event.permissions;

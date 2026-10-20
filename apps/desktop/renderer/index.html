@@ -14,6 +14,62 @@
         <p class="sub">Play your Mac's audio through every device in a Beatsync room.</p>
       </header>
 
+      <section class="status">
+        <ol id="steps" class="steps" aria-label="Streaming progress">
+          <li data-step="0"><span class="step-dot"></span>Connect</li>
+          <li class="step-line"></li>
+          <li data-step="1"><span class="step-dot"></span>Sync clocks</li>
+          <li class="step-line"></li>
+          <li data-step="2"><span class="step-dot"></span>Live</li>
+        </ol>
+        <canvas id="viz" class="viz" aria-hidden="true"></canvas>
+        <div class="row phase-row">
+          <span id="dot" class="dot"></span>
+          <span id="phase">Not streaming</span>
+        </div>
+        <p id="syncDetail" class="sync-detail"></p>
+        <div id="syncProgress" class="sync-progress" hidden><div id="syncBar"></div></div>
+        <div class="room-sync">
+          <p id="roomSync" class="room-sync-summary"></p>
+          <ul id="deviceList" class="device-list"></ul>
+        </div>
+        <p id="message" class="message"></p>
+        <label class="room-volume">
+          <span>Room volume <output id="roomVolumeOut">–</output></span>
+          <input id="roomVolume" type="range" min="0" max="100" step="1" value="100" disabled />
+          <small id="roomVolumeHelp"
+            >Sets the volume on every other device in the room. This Mac follows its own volume keys</small
+          >
+        </label>
+        <dl id="stats">
+          <div>
+            <dt>RTT</dt>
+            <dd id="rtt">–</dd>
+          </div>
+          <div>
+            <dt>Clock offset</dt>
+            <dd id="offset">–</dd>
+          </div>
+          <div>
+            <dt>Others in room</dt>
+            <dd id="listeners">–</dd>
+          </div>
+          <div>
+            <dt>Frames sent</dt>
+            <dd id="frames">–</dd>
+          </div>
+        </dl>
+        <div class="links">
+          <button id="copyLan" class="link" type="button">Copy LAN join link</button>
+          <button id="openRoom" class="link" type="button">Open room in browser ↗</button>
+        </div>
+        <div class="links">
+          <button id="recheckTiming" class="link" type="button">Re-check device timing</button>
+        </div>
+        <p id="lanResult" class="lan-result"></p>
+        <p id="notes" class="lan-result"></p>
+      </section>
+
       <form id="form">
         <label>
           <span>Room code</span>
@@ -97,50 +153,8 @@
 
         <button id="toggle" type="submit">Start streaming</button>
       </form>
-
-      <section class="status">
-        <div class="row">
-          <span id="dot" class="dot"></span>
-          <span id="phase">Not streaming</span>
-        </div>
-        <p id="message" class="message"></p>
-        <div class="meter"><div id="level"></div></div>
-        <label class="room-volume">
-          <span>Room volume <output id="roomVolumeOut">–</output></span>
-          <input id="roomVolume" type="range" min="0" max="100" step="1" value="100" disabled />
-          <small id="roomVolumeHelp"
-            >Sets the volume on every other device in the room. This Mac follows its own volume keys</small
-          >
-        </label>
-        <dl id="stats">
-          <div>
-            <dt>RTT</dt>
-            <dd id="rtt">–</dd>
-          </div>
-          <div>
-            <dt>Clock offset</dt>
-            <dd id="offset">–</dd>
-          </div>
-          <div>
-            <dt>Others in room</dt>
-            <dd id="listeners">–</dd>
-          </div>
-          <div>
-            <dt>Frames sent</dt>
-            <dd id="frames">–</dd>
-          </div>
-        </dl>
-        <div class="links">
-          <button id="copyLan" class="link" type="button">Copy LAN join link</button>
-          <button id="openRoom" class="link" type="button">Open room in browser ↗</button>
-        </div>
-        <div class="links">
-          <button id="recheckTiming" class="link" type="button">Re-check device timing</button>
-        </div>
-        <p id="lanResult" class="lan-result"></p>
-        <p id="notes" class="lan-result"></p>
-      </section>
     </main>
+    <script src="visualizer.js"></script>
     <script src="renderer.js"></script>
   </body>
 </html>

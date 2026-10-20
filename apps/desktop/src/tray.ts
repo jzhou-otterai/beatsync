@@ -3,7 +3,7 @@ import path from "node:path";
 import type { BroadcasterStatus } from "./broadcaster";
 
 const POPOVER_WIDTH = 300;
-const POPOVER_HEIGHT = 228;
+const POPOVER_HEIGHT = 262;
 
 interface MenuBarOptions {
   preloadPath: string;

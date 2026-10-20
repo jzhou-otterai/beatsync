@@ -210,18 +210,6 @@ button.link:hover {
 .message.error {
   color: #fca5a5;
 }
-.meter {
-  height: 4px;
-  background: #262626;
-  border-radius: 2px;
-  overflow: hidden;
-}
-.meter > div {
-  height: 100%;
-  width: 0;
-  background: var(--accent);
-  transition: width 0.08s linear;
-}
 dl {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -299,4 +287,197 @@ label.hosted:has(input:disabled) {
 .mac-timing output {
   color: var(--text);
   font-variant-numeric: tabular-nums;
+}
+/* Sync stepper: Connect → Sync clocks → Live */
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: #737373;
+}
+.steps [data-step] {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  transition: color 0.3s;
+}
+.step-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid #404040;
+  box-sizing: border-box;
+  transition: all 0.3s;
+}
+.step-line {
+  flex: 1;
+  height: 2px;
+  border-radius: 1px;
+  background: #2a2a2a;
+  transition: background 0.4s;
+}
+.step-line.done {
+  background: var(--accent);
+}
+.steps .active {
+  color: var(--text);
+}
+.steps .active .step-dot {
+  border-color: var(--warn);
+  background: var(--warn);
+  animation: step-pulse 1.2s ease-in-out infinite;
+}
+.steps .done {
+  color: var(--muted);
+}
+.steps .done .step-dot {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.steps .done.live {
+  color: var(--text);
+}
+.steps .done.live .step-dot {
+  border-color: var(--live);
+  background: var(--live);
+  animation: pulse 1.6s infinite;
+}
+.steps .failed {
+  color: #fca5a5;
+}
+.steps .failed .step-dot {
+  border-color: var(--live);
+  background: transparent;
+}
+@keyframes step-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgb(245 158 11 / 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgb(245 158 11 / 0);
+  }
+}
+
+/* Ring visualizer */
+.viz {
+  display: block;
+  width: 100%;
+  height: 250px;
+}
+.phase-row {
+  justify-content: center;
+}
+.sync-detail {
+  margin: -4px 0 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.sync-detail.in-sync {
+  color: #86efac;
+}
+.sync-detail:empty {
+  display: none;
+}
+.sync-progress {
+  height: 4px;
+  border-radius: 2px;
+  background: #262626;
+  overflow: hidden;
+}
+.sync-progress[hidden] {
+  display: none;
+}
+.sync-progress > div {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, var(--warn), var(--accent));
+  transition: width 0.25s ease-out;
+}
+/* Room sync: summary and one row per device */
+.room-sync-summary {
+  margin: 0;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+.room-sync-summary:empty {
+  display: none;
+}
+.device-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.device-list li {
+  display: grid;
+  grid-template-columns: 18px auto 1fr;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: rgb(255 255 255 / 0.03);
+}
+.device-name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}
+.device-state {
+  color: var(--muted);
+  text-align: right;
+}
+.sync-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--muted);
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.device-list .verified .sync-dot,
+.device-list .measuring .sync-dot,
+.device-list .corrected .sync-dot,
+.device-list .problem .sync-dot {
+  color: #0a0a0a;
+}
+.device-list .verified .sync-dot {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.device-list .verified .device-state {
+  color: #86efac;
+}
+.device-list .measuring .sync-dot,
+.device-list .corrected .sync-dot {
+  background: var(--warn);
+  border-color: var(--warn);
+}
+.device-list .measuring .sync-dot {
+  animation: step-pulse 1.2s ease-in-out infinite;
+}
+.device-list .problem .sync-dot {
+  background: var(--live);
+  border-color: var(--live);
+}
+.device-list .problem .device-state {
+  color: #fca5a5;
 }

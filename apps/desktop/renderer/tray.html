@@ -17,7 +17,7 @@
         <button id="openMain" class="icon-button" type="button" title="Open Beatsync Speaker">⤢</button>
       </header>
 
-      <div class="meter"><div id="level"></div></div>
+      <canvas id="viz" class="viz" aria-hidden="true"></canvas>
 
       <label class="volume">
         <div class="volume-row">
@@ -30,6 +30,7 @@
 
       <button id="toggle" class="primary" type="button">Start streaming</button>
     </main>
+    <script src="visualizer.js"></script>
     <script src="tray.js"></script>
   </body>
 </html>

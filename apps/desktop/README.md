@@ -129,6 +129,19 @@ To remove the device:
 sudo rm -rf /Library/Audio/Plug-Ins/HAL/Beatsync.driver && sudo killall coreaudiod
 ```
 
+**Sync status.** The top of the window shows where the stream is: **Connect → Sync clocks →
+Live**. While this Mac's clock syncs with the room, the Beatsync ring's arc fills as clean clock
+samples arrive, with a progress bar and an "N of 8 samples" count. Once in sync, a green line shows
+the clock offset and round trip.
+
+**Sync target.** Below that, every other device in the room is plotted around this Mac by how far
+off it is, with rings at 15 ms (inaudible) and 40 ms. A device turns solid green when the Mac's
+microphone has heard it within 15 ms ("verified by ear"). Ripples mean it's being checked now, and
+amber means it was corrected but not re-checked yet. A hollow dot means it's only clock-synced so
+far, placed at its estimated error, and red on the outer ring means it couldn't be heard. A list
+underneath gives each device's state and measured timing, plus a summary like "2 of 3 verified in
+sync by ear". The menu bar popover shows the same as an early/late strip.
+
 **Menu bar.** The app also lives in the menu bar (the ring icon, filled while you're live).
 Click it for a small widget showing the stream status, a level meter, Room volume and
 Start/Stop. Right-click for Open / Quit. Closing the main window keeps the app running there.

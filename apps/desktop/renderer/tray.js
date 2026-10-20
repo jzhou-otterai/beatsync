@@ -13,9 +13,12 @@ const PHASE_LABELS = {
 };
 
 let phase = "idle";
+/** Everyone else in the room and how in sync they are (from the main process) */
+let syncMap = [];
 let draggingVolume = false;
 let volumeSendTimer = null;
 const volume = $("volume");
+const visualizer = /** @type {any} */ (window).createVisualizer(document.getElementById("viz"), { mode: "mini" });
 
 const render = (status) => {
   phase = status.phase;
@@ -24,7 +27,19 @@ const render = (status) => {
     status.phase === "live"
       ? `Live to ${status.listeners} device${status.listeners === 1 ? "" : "s"}`
       : (PHASE_LABELS[status.phase] ?? status.phase);
-  $("detail").textContent = status.message ?? "";
+  // Say what the sync is doing, not just that it's happening
+  const n = Math.min(status.ntpMeasurements, status.ntpTarget);
+  $("detail").textContent =
+    status.message ??
+    (status.phase === "syncing"
+      ? `Syncing clocks: ${n} of ${status.ntpTarget} samples`
+      : status.phase === "live"
+        ? /** @type {any} */ (window).summarizeRoomSync(syncMap, { short: true })
+        : status.phase === "ready"
+          ? "In sync · play something on the Mac"
+          : "");
+  visualizer.setStatus(status);
+  visualizer.setListeners(["ready", "live"].includes(status.phase) ? syncMap : []);
 
   const connected = ["ready", "live"].includes(status.phase);
   volume.disabled = !connected || !status.canControl;
@@ -67,7 +82,11 @@ $("toggle").addEventListener("click", async () => {
 $("openMain").addEventListener("click", () => api.showMain());
 
 api.onStatus(render);
-api.onLevel((level) => {
-  /** @type {HTMLElement} */ ($("level")).style.width = `${Math.min(100, Math.sqrt(level) * 100)}%`;
+// Room sync at a glance: dots on an early/late strip, and a one-line summary
+api.onSyncMap((list) => {
+  syncMap = list;
+  visualizer.setListeners(["ready", "live"].includes(phase) ? list : []);
+  if (["ready", "live"].includes(phase))
+    $("detail").textContent = /** @type {any} */ (window).summarizeRoomSync(list, { short: true });
 });
 api.getInitialState().then(({ status }) => render(status));
