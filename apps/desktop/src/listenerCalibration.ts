@@ -84,9 +84,23 @@ export interface ListenerCalibrationOptions {
   /** Done with the microphone for now */
   release: () => void;
   onNote: (message: string) => void;
+  /** Each listener's progress, for the sync visualization */
+  onResult?: (clientId: string, result: ListenerTimingResult) => void;
   /** One line per measurement, for diagnosing timing by ear */
   log: (line: string) => void;
 }
+
+/** Where a listener stands in being timed by ear */
+export type ListenerTimingResult =
+  | { state: "queued" } // waiting its turn (one listener at a time)
+  | { state: "measuring"; round: number }
+  | { state: "verified"; errorMs: number } // heard within DONE_WITHIN_MS of the Mac
+  | { state: "corrected"; errorMs: number } // still off after MAX_ROUNDS; last correction not re-checked
+  | { state: "not-heard" } // headphones, muted or out of earshot
+  | { state: "failed"; message: string };
+
+/** Within this, a listener counts as in sync by ear */
+export const IN_SYNC_WITHIN_MS = DONE_WITHIN_MS;
 
 /**
  * Times each listener that joins a live stream by ear: the Mac and the listener each
@@ -129,6 +143,7 @@ export class ListenerCalibration {
     if (this.stopped || !this.known.has(listener.clientId)) return;
     if (this.queue.some((q) => q.clientId === listener.clientId)) return;
     this.queue.push(listener);
+    this.opts.onResult?.(listener.clientId, { state: "queued" });
     void this.run();
   }
 
@@ -143,6 +158,7 @@ export class ListenerCalibration {
           await this.calibrate(listener);
         } catch (error) {
           this.opts.onNote(`Couldn't time ${listener.username}: ${(error as Error).message}`);
+          this.opts.onResult?.(listener.clientId, { state: "failed", message: (error as Error).message });
         }
       }
     } finally {
@@ -156,7 +172,10 @@ export class ListenerCalibration {
     // A microphone that just opened delivers silence for a moment
     await new Promise((r) => setTimeout(r, MIC_WARMUP_MS));
     let totalMs = 0;
+    let lastErrorMs = 0;
+    let verified = false;
     for (let round = 1; round <= MAX_ROUNDS && !this.stopped; round++) {
+      this.opts.onResult?.(clientId, { state: "measuring", round });
       const chirpId = ++this.chirpId;
       // Enough lead for the request to arrive and for the listener's own compensation
       const refAtServer = this.opts.serverNow() + 1500;
@@ -177,14 +196,23 @@ export class ListenerCalibration {
       }
       if (result.kind === "not-heard") {
         this.opts.onNote(`${username} couldn't be heard by the Mac's microphone, so its timing wasn't checked`);
+        this.opts.onResult?.(clientId, { state: "not-heard" });
         return;
       }
       const errorMs = Math.round(result.errorMs);
-      if (Math.abs(errorMs) <= DONE_WITHIN_MS) break;
+      lastErrorMs = errorMs;
+      if (Math.abs(errorMs) <= DONE_WITHIN_MS) {
+        verified = true;
+        break;
+      }
       totalMs += errorMs;
       this.opts.sendResult(clientId, chirpId, errorMs);
       await new Promise((r) => setTimeout(r, AFTER_CORRECTION_MS));
     }
+    this.opts.onResult?.(
+      clientId,
+      verified ? { state: "verified", errorMs: lastErrorMs } : { state: "corrected", errorMs: lastErrorMs }
+    );
     this.opts.onNote(
       totalMs === 0
         ? `${username} is in sync with this Mac`

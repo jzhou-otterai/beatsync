@@ -1,5 +1,8 @@
 import { epochNow, NTP_CONSTANTS, type NTPResponseMessageType } from "@beatsync/shared";
 
+/** Clean probe pairs needed before the clock offset is trusted and audio can flow */
+export const SYNC_MEASUREMENTS = NTP_CONSTANTS.MAX_MEASUREMENTS / 2;
+
 interface Measurement {
   t0: number;
   t1: number;
@@ -22,7 +25,7 @@ export class ServerClock {
   rttMs = 0;
 
   get isSynced(): boolean {
-    return this.measurements.length >= NTP_CONSTANTS.MAX_MEASUREMENTS / 2;
+    return this.measurements.length >= SYNC_MEASUREMENTS;
   }
 
   get measurementCount(): number {

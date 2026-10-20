@@ -5,11 +5,11 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } fr
 import { hostname, networkInterfaces } from "node:os";
 import path from "node:path";
 import { AudioCapture, probeDevice } from "./audioCapture";
-import { Broadcaster, initialBroadcasterStatus, type BroadcasterStatus } from "./broadcaster";
+import { Broadcaster, initialBroadcasterStatus, type BroadcasterStatus, type ListenerInfo } from "./broadcaster";
 import { effectiveBufferMs, MIN_BUFFER_CHANGE_MS } from "./bufferSizing";
 import { driverNeedsInstall, installDriver } from "./driverInstall";
 import { findLanAddress, lanJoinUrl } from "./lanUrl";
-import { ListenerCalibration } from "./listenerCalibration";
+import { ListenerCalibration, type ListenerTimingResult } from "./listenerCalibration";
 import { DEFAULT_LOCAL_PORT, LocalServer } from "./localServer";
 import { MicCalibrator } from "./micCalibrator";
 import { MenuBar } from "./tray";
@@ -162,7 +162,19 @@ let win: BrowserWindow | null = null;
 let menuBar: MenuBar | null = null;
 let micCalibrator: MicCalibrator | null = null;
 let calibration: ListenerCalibration | null = null;
-let listeners: { clientId: string; username: string }[] = [];
+let listeners: ListenerInfo[] = [];
+/** How each listener did in being timed by ear, for the sync visualization */
+const listenerTiming = new Map<string, ListenerTimingResult>();
+
+/** Everyone else in the room and how in sync they are, for the sync visualization */
+const sendSyncMap = () => {
+  const present = new Set(listeners.map((l) => l.clientId));
+  for (const id of listenerTiming.keys()) if (!present.has(id)) listenerTiming.delete(id);
+  sendToAll(
+    "sync-map",
+    listeners.map((l) => ({ ...l, timing: listenerTiming.get(l.clientId) ?? null, byEar: calibration !== null }))
+  );
+};
 /** The Mac's real speakers, where its own copy plays (from the capture helper) */
 let monitorDeviceName: string | null = null;
 let settings: Settings;
@@ -200,6 +212,9 @@ const stopAll = () => {
   broadcaster = null;
   if (levelTimer) clearInterval(levelTimer);
   levelTimer = null;
+  listeners = [];
+  listenerTiming.clear();
+  sendSyncMap();
 };
 
 const start = async (next: Omit<Settings, "clientId">) => {
@@ -251,6 +266,7 @@ const start = async (next: Omit<Settings, "clientId">) => {
     onListeners: (next) => {
       listeners = next;
       if (b.getStatus().phase === "live") calibration?.updateListeners(next);
+      sendSyncMap();
     },
     onListenerCompensation: (maxMs) => {
       const next = effectiveBufferMs(settings.latencyMs, maxMs);
@@ -279,6 +295,10 @@ const start = async (next: Omit<Settings, "clientId">) => {
         },
         sampleRate: async () => (await mic.start()).sampleRate,
         release: () => mic.stop(),
+        onResult: (clientId, result) => {
+          listenerTiming.set(clientId, result);
+          sendSyncMap();
+        },
         onNote: (message) => {
           sendToAll("note", { calibration: message });
           appendCalibrationLog(message);

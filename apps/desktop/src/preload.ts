@@ -19,4 +19,6 @@ contextBridge.exposeInMainWorld("beatsync", {
     ipcRenderer.invoke("copy-lan-link", form),
   onStatus: (cb: (status: unknown) => void) => ipcRenderer.on("status", (_e, status) => cb(status)),
   onLevel: (cb: (level: number) => void) => ipcRenderer.on("level", (_e, level: number) => cb(level)),
+  /** Everyone else in the room and how in sync they are */
+  onSyncMap: (cb: (listeners: unknown[]) => void) => ipcRenderer.on("sync-map", (_e, list: unknown[]) => cb(list)),
 });
